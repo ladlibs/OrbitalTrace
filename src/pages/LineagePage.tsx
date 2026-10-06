@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '../lib/supabase/client'
 import { 
   ReactFlow, 
@@ -9,15 +9,36 @@ import {
   useEdgesState,
   Handle,
   Position,
-  NodeProps
+  type Edge
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { GitBranch, ImageIcon, Cpu, Layers } from 'lucide-react'
+import { GitBranch, ImageIcon, Cpu, Layers, Search } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+// --- Custom Node Data Types ---
+type RawFrameNodeData = {
+  id: number
+  cloud: number
+  imageUrl?: string
+}
+
+type JobNodeData = {
+  id: number
+  algorithm: string
+}
+
+type ReconstructedNodeData = {
+  id: number
+  imageUrl?: string
+  resolution?: string
+  psnr?: number
+  ssim?: number
+}
 
 // --- Custom Node Components for React Flow ---
 
 // 1. Raw Frame Node
-function RawFrameNode({ data }: NodeProps) {
+function RawFrameNode({ data }: { data: RawFrameNodeData }) {
   return (
     <div className="bg-slate-900 border-2 border-slate-700 rounded-xl overflow-hidden shadow-2xl w-48 font-sans">
       <div className="bg-slate-800 p-2 text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2 border-b border-slate-700">
@@ -41,7 +62,7 @@ function RawFrameNode({ data }: NodeProps) {
 }
 
 // 2. Job Node
-function JobNode({ data }: NodeProps) {
+function JobNode({ data }: { data: JobNodeData }) {
   return (
     <div className="bg-cyan-950/80 border-2 border-cyan-800/80 rounded-full py-2 px-6 shadow-xl shadow-cyan-900/20 font-sans flex items-center gap-2">
       <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-cyan-500" />
@@ -56,7 +77,9 @@ function JobNode({ data }: NodeProps) {
 }
 
 // 3. Reconstructed Image Node
-function ReconstructedNode({ data }: NodeProps) {
+function ReconstructedNode({ data }: { data: ReconstructedNodeData }) {
+  const psnr = data.psnr
+  const ssim = data.ssim
   return (
     <div className="bg-slate-900 border-2 border-emerald-800/50 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/20 w-64 font-sans">
       <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-emerald-500" />
@@ -75,11 +98,20 @@ function ReconstructedNode({ data }: NodeProps) {
       <div className="p-3 bg-slate-950 text-[10px] grid grid-cols-2 gap-2">
         <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
           <div className="text-slate-500 uppercase text-[8px] mb-0.5">PSNR</div>
-          <div className="font-mono text-cyan-400 font-bold">{data.psnr || 'N/A'}</div>
+          <div className="font-mono text-cyan-400 font-bold">{psnr != null ? `${psnr.toFixed(2)} dB` : 'N/A'}</div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
           <div className="text-slate-500 uppercase text-[8px] mb-0.5">SSIM</div>
-          <div className="font-mono text-cyan-400 font-bold">{data.ssim || 'N/A'}</div>
+          <div className="font-mono text-cyan-400 font-bold">{ssim != null ? ssim.toFixed(4) : 'N/A'}</div>
+        </div>
+        <div className="col-span-2 mt-1">
+          <Link 
+            to={`/inspect/${data.id}`}
+            className="flex items-center justify-center gap-1 w-full bg-emerald-950/50 hover:bg-emerald-900 border border-emerald-900/50 py-1 rounded text-emerald-400 font-bold transition-colors"
+          >
+            <Search className="w-3 h-3" />
+            Inspect Pixel Provenance
+          </Link>
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-emerald-500" />
@@ -93,8 +125,8 @@ export default function LineagePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<any>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   const nodeTypes = useMemo(() => ({
     rawFrame: RawFrameNode,

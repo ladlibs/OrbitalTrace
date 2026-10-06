@@ -9,6 +9,7 @@ import JobsPage from './pages/JobsPage'
 import LineagePage from './pages/LineagePage'
 import './globals.css'
 import AddRawFramePage from './pages/AddRawFramePage'
+import PixelInspector from './pages/PixelInspector'
 
 const router = createBrowserRouter([
   {
@@ -38,6 +39,10 @@ const router = createBrowserRouter([
       {
         path: "add-raw-frame",
         element: <AddRawFramePage />,
+      },
+      {
+        path: "inspect/:imageId",
+        element: <PixelInspector />,
       }
     ]
   }

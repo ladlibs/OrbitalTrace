@@ -20,7 +20,7 @@ export default function AddRawFramePage() {
   const [selectedSatelliteId, setSelectedSatelliteId] = useState('')
   const [selectedSensorId, setSelectedSensorId] = useState('')
   const [cloudCover, setCloudCover] = useState('0')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
 
   // UI state
   const [loading, setLoading] = useState(false)
@@ -60,48 +60,50 @@ export default function AddRawFramePage() {
     setSuccess(false)
 
     if (!selectedSensorId) return setError('Please select a sensor.')
-    if (!file) return setError('Please select an image file to upload.')
+    if (files.length === 0) return setError('Please select at least one image file to upload.')
 
     setLoading(true)
 
     try {
-      // 1. Upload image to Supabase Storage
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
-      const filePath = `raw-frames/${fileName}`
+      for (const file of files) {
+        // 1. Upload image to Supabase Storage
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `raw-frames/${fileName}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('satellite-images')
-        .upload(filePath, file)
+        const { error: uploadError } = await supabase.storage
+          .from('satellite-images')
+          .upload(filePath, file)
 
-      if (uploadError) throw uploadError
+        if (uploadError) throw uploadError
 
-      // 2. Get Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('satellite-images')
-        .getPublicUrl(filePath)
+        // 2. Get Public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('satellite-images')
+          .getPublicUrl(filePath)
 
-      // 3. Insert record into raw_frame table
-      const { error: dbError } = await supabase
-        .from('raw_frame')
-        .insert({
-          sensor_id: selectedSensorId,
-          capture_timestamp: new Date().toISOString(),
-          cloud_cover_pct: parseFloat(cloudCover),
-          status: 'USABLE',
-          image_url: publicUrl // Store the URL for the Lineage Graph
-        })
+        // 3. Insert record into raw_frame table
+        const { error: dbError } = await supabase
+          .from('raw_frame')
+          .insert({
+            sensor_id: selectedSensorId,
+            capture_timestamp: new Date().toISOString(),
+            cloud_cover_pct: parseFloat(cloudCover),
+            status: 'USABLE',
+            image_url: publicUrl // Store the URL for the Lineage Graph
+          })
 
-      if (dbError) throw dbError
+        if (dbError) throw dbError
+      }
 
       setSuccess(true)
       // Reset form
-      setFile(null)
+      setFiles([])
       setCloudCover('0')
       ;(document.getElementById('file-upload') as HTMLInputElement).value = ''
       
     } catch (err: any) {
-      setError(err.message || 'Failed to upload frame.')
+      setError(err.message || 'Failed to upload frames.')
     } finally {
       setLoading(false)
     }
@@ -200,7 +202,8 @@ export default function AddRawFramePage() {
                 id="file-upload"
                 type="file"
                 accept="image/*"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                multiple
+                onChange={(e) => setFiles(Array.from(e.target.files || []))}
                 className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-950 file:text-indigo-300 hover:file:bg-indigo-900 cursor-pointer"
                 required
               />
@@ -210,10 +213,10 @@ export default function AddRawFramePage() {
 
         <button
           type="submit"
-          disabled={loading || !selectedSensorId || !file}
+          disabled={loading || !selectedSensorId || files.length === 0}
           className="btn-primary w-full py-2.5 mt-4"
         >
-          {loading ? 'Uploading...' : 'Upload & Save Frame'}
+          {loading ? 'Uploading...' : `Upload & Save ${files.length || ''} Frame(s)`}
         </button>
       </form>
     </div>

@@ -213,6 +213,14 @@ export default function LogNewJobPage() {
 
       if (ctErr) throw ctErr
 
+      // Trigger the backend API to process the job
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+        await fetch(`${apiUrl}/jobs/${newJobId}/run`, { method: 'POST' })
+      } catch (err) {
+        console.warn('Backend API trigger failed, job is logged but may not process automatically', err)
+      }
+
       setSuccess(true)
       setTimeout(() => {
         navigate('/')
