@@ -8,6 +8,7 @@ import LogNewJobPage from './pages/LogNewJobPage'
 import JobsPage from './pages/JobsPage'
 import LineagePage from './pages/LineagePage'
 import './globals.css'
+import AddRawFramePage from './pages/AddRawFramePage'
 
 const router = createBrowserRouter([
   {
@@ -33,6 +34,10 @@ const router = createBrowserRouter([
       {
         path: "lineage",
         element: <LineagePage />,
+      },
+      {
+        path: "add-raw-frame",
+        element: <AddRawFramePage />,
       }
     ]
   }
