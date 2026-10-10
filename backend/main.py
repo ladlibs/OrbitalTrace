@@ -33,7 +33,7 @@ def put_png(path, arr):
 
 def process(job_id: str):
     try:
-        job = sb.table("reconstruction_job").select("parameters").eq("job_id", job_id).single().execute().data
+        job = sb.table("reconstruction_job").select("parameters,ground_truth_url").eq("job_id", job_id).single().execute().data
         ct = sb.table("contributes_to").select("frame_id,contribution_weight").eq("job_id", job_id).execute().data
         if not ct: raise ValueError("job has no contributing frames")
         wmap = {c["frame_id"]: float(c["contribution_weight"]) for c in ct}
@@ -60,6 +60,25 @@ def process(job_id: str):
         url, h = put_png(f"outputs/{iid}.png", (out * 255).astype(np.uint8))
         sb.table("reconstructed_image").update({"image_url": url}).eq("image_id", iid).execute()
 
+        qa_records = [
+            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
+            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}
+        ]
+
+        if job.get("ground_truth_url"):
+            try:
+                from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+                gt_img, _ = fetch(job["ground_truth_url"])
+                gt_arr = np.asarray(gt_img.resize(size), dtype=np.float32) / 255.0
+                psnr = peak_signal_noise_ratio(gt_arr, out, data_range=1.0)
+                ssim = structural_similarity(gt_arr, out, data_range=1.0, channel_axis=-1)
+                qa_records.extend([
+                    {"image_id": iid, "metric_type": "PSNR", "score": float(psnr)},
+                    {"image_id": iid, "metric_type": "SSIM", "score": float(ssim)}
+                ])
+            except Exception as e:
+                print("Failed to calculate PSNR/SSIM:", e)
+
         order = [r["frame_id"] for r in rows]
         layers = {"CLASS_MAP": cls * 127, "UNCERTAINTY": (unc * 255).astype(np.uint8), "SOURCE_INDEX": src}
         for lt, arr in layers.items():
@@ -83,9 +102,7 @@ def process(job_id: str):
         sb.table("tile_summary").insert(summary).execute()      # parents first
         if sources: sb.table("tile_source").insert(sources).execute()
 
-        sb.table("quality_assessment").upsert([
-            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
-            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}]).execute()
+        sb.table("quality_assessment").upsert(qa_records).execute()
 
         sb.table("reconstruction_job").update({
             "status": "COMPLETED", "end_time": datetime.now(timezone.utc).isoformat()}).eq("job_id", job_id).execute()

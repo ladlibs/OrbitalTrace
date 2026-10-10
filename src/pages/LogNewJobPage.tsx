@@ -154,6 +154,8 @@ export default function LogNewJobPage() {
     })
   }
 
+  const [groundTruthFile, setGroundTruthFile] = useState<File | null>(null)
+  
   // Submit Job Creation Form
   const handleSubmitJob = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -183,6 +185,27 @@ export default function LogNewJobPage() {
     const finalAlgorithm = algorithmUsed === 'OTHER' ? customAlgorithm : algorithmUsed
 
     try {
+      let groundTruthUrl = null
+      
+      // Upload ground truth image if provided
+      if (groundTruthFile) {
+        const fileExt = groundTruthFile.name.split('.').pop()
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `ground-truths/${fileName}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('satellite-images')
+          .upload(filePath, groundTruthFile)
+          
+        if (uploadError) throw uploadError
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('satellite-images')
+          .getPublicUrl(filePath)
+          
+        groundTruthUrl = publicUrl
+      }
+
       // 1. Insert into RECONSTRUCTION_JOB
       const { data: jobRes, error: jobErr } = await supabase
         .from('reconstruction_job')
@@ -192,6 +215,7 @@ export default function LogNewJobPage() {
           start_time: new Date().toISOString(),
           status: 'RUNNING',
           analyst_id: currentAnalyst.analyst_id,
+          ground_truth_url: groundTruthUrl
         })
         .select('job_id')
         .single()
@@ -431,7 +455,7 @@ export default function LogNewJobPage() {
               </select>
             </div>
 
-            {algorithmUsed === 'OTHER' && (
+              {algorithmUsed === 'OTHER' && (
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Specify Custom Algorithm Name</label>
                 <input
@@ -444,6 +468,19 @@ export default function LogNewJobPage() {
                 />
               </div>
             )}
+          </div>
+          
+          <div className="pt-2">
+            <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
+              Ground Truth Image (Optional)
+              <Tooltip title="Ground Truth" content="Upload a high-quality reference image for this area. If provided, the system will automatically calculate PSNR and SSIM quality metrics against the final reconstructed image." />
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setGroundTruthFile(e.target.files?.[0] || null)}
+              className="glass-input w-full text-xs"
+            />
           </div>
 
           {/* Key-Value JSONB Editor */}

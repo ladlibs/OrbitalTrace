@@ -59,7 +59,7 @@ export default function JobsPage() {
             start_time,
             end_time,
             status,
-            reconstructed_image (
+            reconstructed_image!reconstructed_image_job_id_fkey (
               image_id, resolution, output_format, generated_timestamp,
               quality_assessment (metric_type, score)
             )
@@ -196,6 +196,18 @@ export default function JobsPage() {
                         <div className="text-slate-500 mb-1">Uncertainty</div>
                         <div className="font-mono text-slate-200">
                           {image.quality_assessment?.find((q: any) => q.metric_type === 'MEAN_UNCERTAINTY')?.score?.toFixed(3) || 'N/A'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500 mb-1">PSNR (dB)</div>
+                        <div className="font-mono text-slate-200">
+                          {image.quality_assessment?.find((q: any) => q.metric_type === 'PSNR')?.score?.toFixed(2) || 'N/A'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500 mb-1">SSIM</div>
+                        <div className="font-mono text-slate-200">
+                          {image.quality_assessment?.find((q: any) => q.metric_type === 'SSIM')?.score?.toFixed(4) || 'N/A'}
                         </div>
                       </div>
                       <div className="col-span-2 sm:col-span-4 mt-2">
