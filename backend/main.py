@@ -65,6 +65,9 @@ def process(job_id: str):
             {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}
         ]
 
+        order = [r["frame_id"] for r in rows]
+        layers = {"CLASS_MAP": cls * 127, "UNCERTAINTY": (unc * 255).astype(np.uint8), "SOURCE_INDEX": src}
+
         if job.get("ground_truth_url"):
             try:
                 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
@@ -76,11 +79,12 @@ def process(job_id: str):
                     {"image_id": iid, "metric_type": "PSNR", "score": float(psnr)},
                     {"image_id": iid, "metric_type": "SSIM", "score": float(ssim)}
                 ])
+                # Generate ERROR_MAP
+                err = np.abs(gt_arr - out).mean(axis=-1)
+                layers["ERROR_MAP"] = (err * 255).astype(np.uint8)
             except Exception as e:
-                print("Failed to calculate PSNR/SSIM:", e)
+                print("Failed to calculate PSNR/SSIM/ERROR_MAP:", e)
 
-        order = [r["frame_id"] for r in rows]
-        layers = {"CLASS_MAP": cls * 127, "UNCERTAINTY": (unc * 255).astype(np.uint8), "SOURCE_INDEX": src}
         for lt, arr in layers.items():
             lurl, lh = put_png(f"outputs/{iid}_{lt}.png", arr)
             sb.table("provenance_layer").upsert({
