@@ -59,7 +59,7 @@ export default function JobsPage() {
             start_time,
             end_time,
             status,
-            reconstructed_image (
+            reconstructed_image!reconstructed_image_job_id_fkey (
               image_id, resolution, output_format, generated_timestamp,
               quality_assessment (metric_type, score)
             )
@@ -130,6 +130,8 @@ export default function JobsPage() {
             const isCompleted = job.status?.toUpperCase() === 'COMPLETED'
             const isFailed = job.status?.toUpperCase() === 'FAILED'
             const image = job.reconstructed_image?.[0]
+            const scoreOf = (m: string) =>
+              image?.quality_assessment?.find((q: any) => String(q.metric_type).toUpperCase() === m)?.score
 
             return (
               <div key={job.job_id} className={`glass-panel p-5 transition-all border ${

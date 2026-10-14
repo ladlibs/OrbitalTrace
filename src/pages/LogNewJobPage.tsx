@@ -15,6 +15,11 @@ import {
 } from 'lucide-react'
 import { Tooltip } from '../components/Tooltip'
 
+// Must match the ALGORITHMS registry in backend/main.py
+const ALGORITHMS = [
+  { id: 'FUSION_WEIGHTED_V1', label: 'Weighted Cloud-Masked Fusion (v1)' },
+]
+
 interface SelectedFrame {
   frame_id: string | number
   weight: number
@@ -31,6 +36,8 @@ export default function LogNewJobPage() {
   const [sensors, setSensors] = useState<any[]>([])
   const [rawFrames, setRawFrames] = useState<any[]>([])
   const [currentAnalyst, setCurrentAnalyst] = useState<any>(null)
+  const [parentImages, setParentImages] = useState<any[]>([])
+  const [parentImageId, setParentImageId] = useState<string>('')
 
   // Selection states
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>('')
@@ -38,11 +45,9 @@ export default function LogNewJobPage() {
   const [selectedFramesMap, setSelectedFramesMap] = useState<Record<string, SelectedFrame>>({})
 
   // Form fields
-  const [algorithmUsed, setAlgorithmUsed] = useState<string>('POCS')
-  const [customAlgorithm, setCustomAlgorithm] = useState<string>('')
+  const [algorithmUsed, setAlgorithmUsed] = useState<string>(ALGORITHMS[0].id)
   const [paramPairs, setParamPairs] = useState<Array<{ key: string; value: string }>>([
-    { key: 'iterations', value: '500' },
-    { key: 'learning_rate', value: '0.001' },
+    { key: 'parent_weight', value: '1.0' },
   ])
 
   // UI state
@@ -65,6 +70,12 @@ export default function LogNewJobPage() {
 
       const { data: sats } = await supabase.from('satellite').select('satellite_id, name, agency')
       setSatellites(sats || [])
+
+      const { data: imgs } = await supabase
+        .from('reconstructed_image')
+        .select('image_id, job_id, generated_timestamp')
+        .order('image_id', { ascending: false })
+      setParentImages(imgs || [])
     }
     initData()
   }, [])
@@ -148,9 +159,7 @@ export default function LogNewJobPage() {
 
   const updateParamPair = (index: number, field: 'key' | 'value', val: string) => {
     setParamPairs((prev) => {
-      const copy = [...prev]
-      copy[index][field] = val
-      return copy
+      return prev.map((pair, i) => (i === index ? { ...pair, [field]: val } : pair))
     })
   }
 
@@ -160,8 +169,8 @@ export default function LogNewJobPage() {
     setError(null)
 
     const selectedFramesList = Object.values(selectedFramesMap)
-    if (selectedFramesList.length === 0) {
-      setError('Please select at least one raw satellite frame for this job.')
+    if (selectedFramesList.length === 0 && !parentImageId) {
+      setError('Select at least one raw frame, or choose a parent image to refine.')
       return
     }
 
@@ -180,18 +189,19 @@ export default function LogNewJobPage() {
       }
     })
 
-    const finalAlgorithm = algorithmUsed === 'OTHER' ? customAlgorithm : algorithmUsed
+    const finalAlgorithm = algorithmUsed
 
     try {
       // 1. Insert into RECONSTRUCTION_JOB
       const { data: jobRes, error: jobErr } = await supabase
         .from('reconstruction_job')
         .insert({
-          algorithm_used: finalAlgorithm || 'POCS',
+          algorithm_used: finalAlgorithm,
           parameters: paramsJson,
           start_time: new Date().toISOString(),
           status: 'RUNNING',
           analyst_id: currentAnalyst.analyst_id,
+          parent_image_id: parentImageId ? Number(parentImageId) : null,
         })
         .select('job_id')
         .single()
@@ -207,11 +217,17 @@ export default function LogNewJobPage() {
         contribution_weight: f.weight,
       }))
 
-      const { error: ctErr } = await supabase
-        .from('contributes_to')
-        .insert(contributesRows)
+      if (contributesRows.length > 0) {
+        const { error: ctErr } = await supabase.from('contributes_to').insert(contributesRows)
+        if (ctErr) throw ctErr
+      }
 
-      if (ctErr) throw ctErr
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/jobs/${newJobId}/run`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      if (!resp.ok) throw new Error(`Backend refused to start the job (HTTP ${resp.status})`)
 
       // Trigger the backend API to process the job
       try {
@@ -282,7 +298,7 @@ export default function LogNewJobPage() {
               <Tooltip title="Satellite Entity" content="The actual physical spacecraft orbiting Earth. A single satellite usually carries several different cameras or scanners to take pictures." />
             </label>
             <select
-              required
+              required={!parentImageId}
               value={selectedSatelliteId}
               onChange={(e) => setSelectedSatelliteId(e.target.value)}
               className="glass-input w-full"
@@ -405,6 +421,30 @@ export default function LogNewJobPage() {
           </div>
         )}
 
+        {/* Optional: refine an existing image */}
+        <div className="glass-panel p-6 space-y-3">
+          <div className="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">
+            Optional: Refine an Existing Image (adds a provenance generation)
+          </div>
+          <select
+            value={parentImageId}
+            onChange={(e) => setParentImageId(e.target.value)}
+            className="glass-input w-full"
+          >
+            <option value="">-- Fresh reconstruction (no parent) --</option>
+            {parentImages.map((im) => (
+              <option key={im.image_id} value={im.image_id}>
+                Image #{im.image_id} (job #{im.job_id}, {new Date(im.generated_timestamp).toLocaleDateString()})
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500">
+            With a parent, frames below are optional extra evidence. Add a parameter
+            <span className="font-mono text-cyan-400"> parent_weight </span>
+            (default 1.0) to control how much the parent counts.
+          </p>
+        </div>
+
         {/* Step D: Algorithm & JSONB Parameters */}
         <div className="glass-panel p-6 space-y-6">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">
@@ -416,34 +456,23 @@ export default function LogNewJobPage() {
             <div>
               <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
                 Algorithm Used
-                <Tooltip title="Reconstruction Algorithms" content="The computer program used to clean up the image. Traditional math programs are very accurate but can look blurry. Modern AI programs (like ESRGAN) make images look incredibly sharp, but sometimes they 'guess' details that aren't really there." />
+                <Tooltip title="Reconstruction Algorithms" content="The computer program used to clean up the image. Only algorithms the processing engine can actually run are listed, so the recorded algorithm always matches what was executed." />
               </label>
               <select
                 value={algorithmUsed}
                 onChange={(e) => setAlgorithmUsed(e.target.value)}
                 className="glass-input w-full"
               >
-                <option value="POCS">POCS (Projection Onto Convex Sets)</option>
-                <option value="ESRGAN">ESRGAN (Super-Resolution GAN)</option>
-                <option value="Bicubic Interpolation">Bicubic Interpolation</option>
-                <option value="Deep Iterative Reconstruction">Deep Iterative Reconstruction</option>
-                <option value="OTHER">Custom Free-Text Algorithm...</option>
+                {ALGORITHMS.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label}</option>
+                ))}
               </select>
             </div>
 
-            {algorithmUsed === 'OTHER' && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Specify Custom Algorithm Name</label>
-                <input
-                  type="text"
-                  required
-                  value={customAlgorithm}
-                  onChange={(e) => setCustomAlgorithm(e.target.value)}
-                  placeholder="e.g. Multi-Frame Optical Wavelet"
-                  className="glass-input w-full"
-                />
-              </div>
-            )}
+            <p className="text-[11px] text-slate-500 self-end">
+              Only algorithms the processing engine can execute are listed, so the recorded
+              algorithm always matches what actually ran.
+            </p>
           </div>
 
           {/* Key-Value JSONB Editor */}
