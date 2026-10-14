@@ -224,11 +224,8 @@ export default function LogNewJobPage() {
           start_time: new Date().toISOString(),
           status: 'RUNNING',
           analyst_id: currentAnalyst.analyst_id,
-<<<<<<< HEAD
           parent_image_id: parentImageId ? Number(parentImageId) : null,
-=======
           ground_truth_url: groundTruthUrl
->>>>>>> metrics
         })
         .select('job_id')
         .single()
@@ -496,26 +493,10 @@ export default function LogNewJobPage() {
               </select>
             </div>
 
-<<<<<<< HEAD
             <p className="text-[11px] text-slate-500 self-end">
               Only algorithms the processing engine can execute are listed, so the recorded
               algorithm always matches what actually ran.
             </p>
-=======
-              {algorithmUsed === 'OTHER' && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Specify Custom Algorithm Name</label>
-                <input
-                  type="text"
-                  required
-                  value={customAlgorithm}
-                  onChange={(e) => setCustomAlgorithm(e.target.value)}
-                  placeholder="e.g. Multi-Frame Optical Wavelet"
-                  className="glass-input w-full"
-                />
-              </div>
-            )}
->>>>>>> metrics
           </div>
           
           <div className="pt-2">

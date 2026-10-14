@@ -69,17 +69,13 @@ def load_parent(parent_id):
 def process(job_id: int):
     iid = None
     try:
-<<<<<<< HEAD
-        job = sb.table("reconstruction_job").select("parameters,algorithm_used,parent_image_id") \
+        job = sb.table("reconstruction_job").select("parameters,algorithm_used,parent_image_id,ground_truth_url") \
             .eq("job_id", job_id).single().execute().data
         algo = ALGORITHMS.get(job["algorithm_used"])
         if algo is None:
             raise ValueError(f"unsupported algorithm: {job['algorithm_used']}")
         params = job["parameters"] or {}
         parent_id = job.get("parent_image_id")
-=======
-        job = sb.table("reconstruction_job").select("parameters,ground_truth_url").eq("job_id", job_id).single().execute().data
->>>>>>> metrics
         ct = sb.table("contributes_to").select("frame_id,contribution_weight").eq("job_id", job_id).execute().data
         if not ct and not parent_id:
             raise ValueError("job has no contributing frames and no parent image")
@@ -141,23 +137,21 @@ def process(job_id: int):
         sb.table("reconstructed_image").update({
             "image_url": url, "content_hash": h, "width": W, "height": H}).eq("image_id", iid).execute()
 
-<<<<<<< HEAD
         def layer(lt, url_, h_, meta):
             sb.table("provenance_layer").upsert({"image_id": iid, "layer_type": lt, "layer_url": url_,
                                                  "layer_hash": h_, "meta": meta}).execute()
-        for lt, arr, meta in (
+
+        qa_records = [
+            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
+            {"image_id": iid, "metric_type": "INHERITED_SYNTH_FRACTION", "score": float(syn.mean())},
+            {"image_id": iid, "metric_type": "GENERATION_DEPTH", "score": (parent["depth"] + 1) if parent else 1},
+            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())},
+        ]
+        layers = [
             ("CLASS_MAP", cls * 127, {}),
             ("UNCERTAINTY", (unc * 255).astype(np.uint8), {}),
             ("SOURCE_INDEX", src, {"frame_order": frame_ids, "parent_index": N if parent else None}),
-        ):
-=======
-        qa_records = [
-            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
-            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}
         ]
-
-        order = [r["frame_id"] for r in rows]
-        layers = {"CLASS_MAP": cls * 127, "UNCERTAINTY": (unc * 255).astype(np.uint8), "SOURCE_INDEX": src}
 
         if job.get("ground_truth_url"):
             try:
@@ -168,16 +162,14 @@ def process(job_id: int):
                 ssim = structural_similarity(gt_arr, out, data_range=1.0, channel_axis=-1)
                 qa_records.extend([
                     {"image_id": iid, "metric_type": "PSNR", "score": float(psnr)},
-                    {"image_id": iid, "metric_type": "SSIM", "score": float(ssim)}
+                    {"image_id": iid, "metric_type": "SSIM", "score": float(ssim)},
                 ])
-                # Generate ERROR_MAP
                 err = np.abs(gt_arr - out).mean(axis=-1)
-                layers["ERROR_MAP"] = (err * 255).astype(np.uint8)
+                layers.append(("ERROR_MAP", (err * 255).astype(np.uint8), {}))
             except Exception as e:
                 print("Failed to calculate PSNR/SSIM/ERROR_MAP:", e)
 
-        for lt, arr in layers.items():
->>>>>>> metrics
+        for lt, arr, meta in layers:
             lurl, lh = put_png(f"outputs/{iid}_{lt}.png", arr)
             layer(lt, lurl, lh, meta)
         lurl, lh = put_bytes(f"outputs/{iid}_SOURCE_WEIGHT.npz", pack_vector(vec), "application/octet-stream")
@@ -199,15 +191,7 @@ def process(job_id: int):
         sb.table("tile_summary").insert(summary).execute()      # parents first
         if sources: sb.table("tile_source").insert(sources).execute()
 
-<<<<<<< HEAD
-        sb.table("quality_assessment").upsert([
-            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
-            {"image_id": iid, "metric_type": "INHERITED_SYNTH_FRACTION", "score": float(syn.mean())},
-            {"image_id": iid, "metric_type": "GENERATION_DEPTH", "score": (parent["depth"] + 1) if parent else 1},
-            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}]).execute()
-=======
         sb.table("quality_assessment").upsert(qa_records).execute()
->>>>>>> metrics
 
         sb.table("reconstruction_job").update({
             "status": "COMPLETED", "end_time": datetime.now(timezone.utc).isoformat()}).eq("job_id", job_id).execute()
