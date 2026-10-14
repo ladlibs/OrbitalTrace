@@ -1,0 +1,155 @@
+diff --git a/.gitignore b/.gitignore
+index 3c3629e..fcdae4e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1 +1,16 @@
+ node_modules
++dist
++dist-ssr
++*.local
++
++# Editor directories and files
++.vscode/*
++!.vscode/extensions.json
++.idea
++.DS_Store
++*.suo
++*.ntvs*
++*.njsproj
++*.sln
++*.sw?
++.env
+diff --git a/backend/main.py b/backend/main.py
+index b499375..84b5375 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -69,7 +69,7 @@ def load_parent(parent_id):
+ def process(job_id: int):
+     iid = None
+     try:
+-        job = sb.table("reconstruction_job").select("parameters,algorithm_used,parent_image_id") \
++        job = sb.table("reconstruction_job").select("parameters,algorithm_used,parent_image_id,ground_truth_url") \
+             .eq("job_id", job_id).single().execute().data
+         algo = ALGORITHMS.get(job["algorithm_used"])
+         if algo is None:
+@@ -140,11 +140,36 @@ def process(job_id: int):
+         def layer(lt, url_, h_, meta):
+             sb.table("provenance_layer").upsert({"image_id": iid, "layer_type": lt, "layer_url": url_,
+                                                  "layer_hash": h_, "meta": meta}).execute()
+-        for lt, arr, meta in (
++
++        qa_records = [
++            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
++            {"image_id": iid, "metric_type": "INHERITED_SYNTH_FRACTION", "score": float(syn.mean())},
++            {"image_id": iid, "metric_type": "GENERATION_DEPTH", "score": (parent["depth"] + 1) if parent else 1},
++            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())},
++        ]
++        layers = [
+             ("CLASS_MAP", cls * 127, {}),
+             ("UNCERTAINTY", (unc * 255).astype(np.uint8), {}),
+             ("SOURCE_INDEX", src, {"frame_order": frame_ids, "parent_index": N if parent else None}),
+-        ):
++        ]
++
++        if job.get("ground_truth_url"):
++            try:
++                from skimage.metrics import peak_signal_noise_ratio, structural_similarity
++                gt_img, _ = fetch(job["ground_truth_url"])
++                gt_arr = np.asarray(gt_img.resize(size), dtype=np.float32) / 255.0
++                psnr = peak_signal_noise_ratio(gt_arr, out, data_range=1.0)
++                ssim = structural_similarity(gt_arr, out, data_range=1.0, channel_axis=-1)
++                qa_records.extend([
++                    {"image_id": iid, "metric_type": "PSNR", "score": float(psnr)},
++                    {"image_id": iid, "metric_type": "SSIM", "score": float(ssim)},
++                ])
++                err = np.abs(gt_arr - out).mean(axis=-1)
++                layers.append(("ERROR_MAP", (err * 255).astype(np.uint8), {}))
++            except Exception as e:
++                print("Failed to calculate PSNR/SSIM/ERROR_MAP:", e)
++
++        for lt, arr, meta in layers:
+             lurl, lh = put_png(f"outputs/{iid}_{lt}.png", arr)
+             layer(lt, lurl, lh, meta)
+         lurl, lh = put_bytes(f"outputs/{iid}_SOURCE_WEIGHT.npz", pack_vector(vec), "application/octet-stream")
+@@ -166,11 +191,7 @@ def process(job_id: int):
+         sb.table("tile_summary").insert(summary).execute()      # parents first
+         if sources: sb.table("tile_source").insert(sources).execute()
+ 
+-        sb.table("quality_assessment").upsert([
+-            {"image_id": iid, "metric_type": "SYNTH_FRACTION", "score": float((cls == 2).mean())},
+-            {"image_id": iid, "metric_type": "INHERITED_SYNTH_FRACTION", "score": float(syn.mean())},
+-            {"image_id": iid, "metric_type": "GENERATION_DEPTH", "score": (parent["depth"] + 1) if parent else 1},
+-            {"image_id": iid, "metric_type": "MEAN_UNCERTAINTY", "score": float(unc.mean())}]).execute()
++        sb.table("quality_assessment").upsert(qa_records).execute()
+ 
+         sb.table("reconstruction_job").update({
+             "status": "COMPLETED", "end_time": datetime.now(timezone.utc).isoformat()}).eq("job_id", job_id).execute()
+diff --git a/src/pages/LogNewJobPage.tsx b/src/pages/LogNewJobPage.tsx
+index 4bc1605..f2ddb54 100644
+--- a/src/pages/LogNewJobPage.tsx
++++ b/src/pages/LogNewJobPage.tsx
+@@ -163,6 +163,8 @@ export default function LogNewJobPage() {
+     })
+   }
+ 
++  const [groundTruthFile, setGroundTruthFile] = useState<File | null>(null)
++  
+   // Submit Job Creation Form
+   const handleSubmitJob = async (e: React.FormEvent) => {
+     e.preventDefault()
+@@ -192,6 +194,27 @@ export default function LogNewJobPage() {
+     const finalAlgorithm = algorithmUsed
+ 
+     try {
++      let groundTruthUrl = null
++      
++      // Upload ground truth image if provided
++      if (groundTruthFile) {
++        const fileExt = groundTruthFile.name.split('.').pop()
++        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
++        const filePath = `ground-truths/${fileName}`
++        
++        const { error: uploadError } = await supabase.storage
++          .from('satellite-images')
++          .upload(filePath, groundTruthFile)
++          
++        if (uploadError) throw uploadError
++        
++        const { data: { publicUrl } } = supabase.storage
++          .from('satellite-images')
++          .getPublicUrl(filePath)
++          
++        groundTruthUrl = publicUrl
++      }
++
+       // 1. Insert into RECONSTRUCTION_JOB
+       const { data: jobRes, error: jobErr } = await supabase
+         .from('reconstruction_job')
+@@ -202,6 +225,7 @@ export default function LogNewJobPage() {
+           status: 'RUNNING',
+           analyst_id: currentAnalyst.analyst_id,
+           parent_image_id: parentImageId ? Number(parentImageId) : null,
++          ground_truth_url: groundTruthUrl
+         })
+         .select('job_id')
+         .single()
+@@ -474,6 +498,19 @@ export default function LogNewJobPage() {
+               algorithm always matches what actually ran.
+             </p>
+           </div>
++          
++          <div className="pt-2">
++            <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
++              Ground Truth Image (Optional)
++              <Tooltip title="Ground Truth" content="Upload a high-quality reference image for this area. If provided, the system will automatically calculate PSNR and SSIM quality metrics against the final reconstructed image." />
++            </label>
++            <input
++              type="file"
++              accept="image/*"
++              onChange={(e) => setGroundTruthFile(e.target.files?.[0] || null)}
++              className="glass-input w-full text-xs"
++            />
++          </div>
+ 
+           {/* Key-Value JSONB Editor */}
+           <div className="space-y-3 pt-2">
