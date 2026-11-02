@@ -11,7 +11,12 @@ import {
   Plus, 
   Trash2, 
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  Search,
+  Image as ImageIcon,
+  SlidersHorizontal,
+  X
 } from 'lucide-react'
 import { Tooltip } from '../components/Tooltip'
 
@@ -20,6 +25,10 @@ interface SelectedFrame {
   weight: number
   capture_timestamp: string
   cloud_cover_pct: number
+  status?: string
+  image_url?: string
+  source_dataset?: string
+  scene_id?: string
 }
 
 export default function LogNewJobPage() {
@@ -29,12 +38,14 @@ export default function LogNewJobPage() {
   // Data sources
   const [satellites, setSatellites] = useState<any[]>([])
   const [sensors, setSensors] = useState<any[]>([])
-  const [rawFrames, setRawFrames] = useState<any[]>([])
+  const [allFrames, setAllFrames] = useState<any[]>([])
   const [currentAnalyst, setCurrentAnalyst] = useState<any>(null)
 
-  // Selection states
+  // Mix & Match Filter states
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'RAW' | 'RECONSTRUCTED'>('ALL')
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>('')
   const [selectedSensorId, setSelectedSensorId] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedFramesMap, setSelectedFramesMap] = useState<Record<string, SelectedFrame>>({})
 
   // Form fields
@@ -44,37 +55,55 @@ export default function LogNewJobPage() {
     { key: 'iterations', value: '500' },
     { key: 'learning_rate', value: '0.001' },
   ])
+  const [groundTruthFile, setGroundTruthFile] = useState<File | null>(null)
 
   // UI state
   const [loading, setLoading] = useState(false)
+  const [loadingFrames, setLoadingFrames] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  // Load initial analyst & satellite list
+  // Load initial analyst, satellites, and all available frames
   useEffect(() => {
     async function initData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: analyst } = await supabase
-          .from('analyst')
-          .select('*')
-          .eq('auth_uid', user.id)
-          .single()
-        setCurrentAnalyst(analyst)
-      }
+      try {
+        setLoadingFrames(true)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: analyst } = await supabase
+            .from('analyst')
+            .select('*')
+            .eq('auth_uid', user.id)
+            .single()
+          setCurrentAnalyst(analyst)
+        }
 
-      const { data: sats } = await supabase.from('satellite').select('satellite_id, name, agency')
-      setSatellites(sats || [])
+        const { data: sats } = await supabase.from('satellite').select('satellite_id, name, agency')
+        setSatellites(sats || [])
+
+        // Fetch all frames (including previously reconstructed images synced into raw_frame)
+        const { data: frames, error: framesErr } = await supabase
+          .from('raw_frame')
+          .select('frame_id, capture_timestamp, latitude, longitude, cloud_cover_pct, status, sensor_id, image_url, source_dataset, scene_id')
+          .order('capture_timestamp', { ascending: false })
+
+        if (framesErr) throw framesErr
+        setAllFrames(frames || [])
+      } catch (err: any) {
+        console.error('Error loading initial data:', err)
+        setError('Failed to load frames library: ' + (err.message || 'Unknown error'))
+      } finally {
+        setLoadingFrames(false)
+      }
     }
     initData()
   }, [])
 
-  // Cascading Step B: When Satellite changes, fetch sensors
+  // When Satellite changes, fetch related sensors
   useEffect(() => {
     if (!selectedSatelliteId) {
       setSensors([])
       setSelectedSensorId('')
-      setRawFrames([])
       return
     }
 
@@ -85,30 +114,11 @@ export default function LogNewJobPage() {
         .eq('satellite_id', selectedSatelliteId)
       setSensors(data || [])
       setSelectedSensorId('')
-      setRawFrames([])
     }
     loadSensors()
   }, [selectedSatelliteId])
 
-  // Cascading Step C: When Sensor changes, fetch available raw frames
-  useEffect(() => {
-    if (!selectedSensorId) {
-      setRawFrames([])
-      return
-    }
-
-    async function loadFrames() {
-      const { data } = await supabase
-        .from('raw_frame')
-        .select('*')
-        .eq('sensor_id', selectedSensorId)
-        .order('capture_timestamp', { ascending: false })
-      setRawFrames(data || [])
-    }
-    loadFrames()
-  }, [selectedSensorId])
-
-  // Frame selection handler
+  // Frame selection handler — auto-distributes weights evenly on every add/remove
   const toggleFrameSelection = (frame: any) => {
     const frameIdStr = String(frame.frame_id)
     setSelectedFramesMap((prev) => {
@@ -118,11 +128,19 @@ export default function LogNewJobPage() {
       } else {
         updated[frameIdStr] = {
           frame_id: frame.frame_id,
-          weight: 0.5, // Default weight 0.5
+          weight: 0, // will be recalculated below
           capture_timestamp: frame.capture_timestamp,
           cloud_cover_pct: frame.cloud_cover_pct,
+          status: frame.status,
+          image_url: frame.image_url,
+          source_dataset: frame.source_dataset,
+          scene_id: frame.scene_id,
         }
       }
+      // Redistribute 1/N evenly across all selected frames
+      const keys = Object.keys(updated)
+      const evenWeight = keys.length > 0 ? parseFloat((1 / keys.length).toFixed(4)) : 0
+      keys.forEach((k) => { updated[k] = { ...updated[k], weight: evenWeight } })
       return updated
     })
   }
@@ -135,6 +153,30 @@ export default function LogNewJobPage() {
         weight: Math.min(1, Math.max(0, weightVal)),
       },
     }))
+  }
+
+  const removeSelectedFrame = (frameIdStr: string) => {
+    setSelectedFramesMap((prev) => {
+      const updated = { ...prev }
+      delete updated[frameIdStr]
+      const keys = Object.keys(updated)
+      const evenWeight = keys.length > 0 ? parseFloat((1 / keys.length).toFixed(4)) : 0
+      keys.forEach((k) => { updated[k] = { ...updated[k], weight: evenWeight } })
+      return updated
+    })
+  }
+
+  const distributeWeightsEvenly = () => {
+    const keys = Object.keys(selectedFramesMap)
+    if (keys.length === 0) return
+    const evenWeight = parseFloat((1 / keys.length).toFixed(4))
+    setSelectedFramesMap((prev) => {
+      const updated = { ...prev }
+      keys.forEach((k) => {
+        updated[k] = { ...updated[k], weight: evenWeight }
+      })
+      return updated
+    })
   }
 
   // Key-value parameter manager
@@ -154,16 +196,41 @@ export default function LogNewJobPage() {
     })
   }
 
-  const [groundTruthFile, setGroundTruthFile] = useState<File | null>(null)
-  
+  // Filtered frames computation
+  const filteredFrames = allFrames.filter((f) => {
+    const isReconstructed = f.source_dataset === 'RECONSTRUCTED' || String(f.frame_id).startsWith('REC-')
+    
+    // Type Filter
+    if (typeFilter === 'RAW' && isReconstructed) return false
+    if (typeFilter === 'RECONSTRUCTED' && !isReconstructed) return false
+
+    // Sensor Filter
+    if (selectedSensorId && String(f.sensor_id) !== String(selectedSensorId)) return false
+
+    // Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      const matchId = String(f.frame_id).toLowerCase().includes(q)
+      const matchScene = String(f.scene_id || '').toLowerCase().includes(q)
+      const matchStatus = String(f.status || '').toLowerCase().includes(q)
+      if (!matchId && !matchScene && !matchStatus) return false
+    }
+
+    return true
+  })
+
+  // Breakdown of selected mix
+  const selectedList = Object.values(selectedFramesMap)
+  const rawCount = selectedList.filter(f => f.source_dataset !== 'RECONSTRUCTED' && !String(f.frame_id).startsWith('REC-')).length
+  const reconCount = selectedList.filter(f => f.source_dataset === 'RECONSTRUCTED' || String(f.frame_id).startsWith('REC-')).length
+
   // Submit Job Creation Form
   const handleSubmitJob = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    const selectedFramesList = Object.values(selectedFramesMap)
-    if (selectedFramesList.length === 0) {
-      setError('Please select at least one raw satellite frame for this job.')
+    if (selectedList.length === 0) {
+      setError('Please select at least one input frame or reconstructed product for this job.')
       return
     }
 
@@ -181,6 +248,16 @@ export default function LogNewJobPage() {
         paramsJson[key.trim()] = isNaN(Number(value)) ? value : Number(value)
       }
     })
+
+    // Detect if parent images were selected in the mix
+    const parentImageIds = selectedList
+      .filter((f) => f.source_dataset === 'RECONSTRUCTED' || String(f.frame_id).startsWith('REC-'))
+      .map((f) => String(f.scene_id || f.frame_id).replace('REC-', '').replace('IMG-', ''))
+
+    if (parentImageIds.length > 0) {
+      paramsJson['parent_image_ids'] = parentImageIds
+      paramsJson['primary_parent_image_id'] = parentImageIds[0]
+    }
 
     const finalAlgorithm = algorithmUsed === 'OTHER' ? customAlgorithm : algorithmUsed
 
@@ -224,11 +301,12 @@ export default function LogNewJobPage() {
 
       const newJobId = jobRes.job_id
 
-      // 2. Insert into CONTRIBUTES_TO bridge table per frame
-      const contributesRows = selectedFramesList.map((f) => ({
+      // 2. Insert into CONTRIBUTES_TO bridge table per frame (normalized so sum = 1.0)
+      const totalWeight = selectedList.reduce((acc, f) => acc + (Number(f.weight) || 0), 0) || 1
+      const contributesRows = selectedList.map((f) => ({
         job_id: newJobId,
         frame_id: f.frame_id,
-        contribution_weight: f.weight,
+        contribution_weight: parseFloat(((Number(f.weight) || 0) / totalWeight).toFixed(4)),
       }))
 
       const { error: ctErr } = await supabase
@@ -256,7 +334,7 @@ export default function LogNewJobPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-5xl mx-auto space-y-8 animate-fade-in pb-12">
       
       {/* Page Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -266,7 +344,7 @@ export default function LogNewJobPage() {
             Log Reconstruction Job
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Record a new external satellite reconstruction pipeline execution metadata and frame weights.
+            Mix and match raw telemetry frames and previously reconstructed parent images to produce high-fidelity imagery.
           </p>
         </div>
 
@@ -293,154 +371,290 @@ export default function LogNewJobPage() {
 
       <form onSubmit={handleSubmitJob} className="space-y-8">
         
-        {/* Step A: Select Satellite */}
-        <div className="glass-panel p-6 space-y-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">
-            <Satellite className="w-4 h-4 text-cyan-400" />
-            Step 1: Select Target Satellite
+        {/* Step 1: Mix & Match Input Frames Gallery */}
+        <div className="glass-panel p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <CheckSquare className="w-4 h-4 text-cyan-400" />
+                Step 1: Mix & Match Input Sources
+                <Tooltip 
+                  title="Mix & Match Input Sources" 
+                  content="Select any combination of raw satellite frames and previously reconstructed parent images. Assign individual contribution weights to balance how much each image influences the final reconstructed output." 
+                />
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                You can combine fresh raw captures with prior reconstructed outputs to refine detail.
+              </p>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setTypeFilter('ALL')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  typeFilter === 'ALL' ? 'bg-cyan-950 text-cyan-400 border border-cyan-800/80 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All Inputs ({allFrames.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('RAW')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  typeFilter === 'RAW' ? 'bg-cyan-950 text-cyan-400 border border-cyan-800/80 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Raw Satellites
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('RECONSTRUCTED')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                  typeFilter === 'RECONSTRUCTED' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/80 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                Reconstructed Products
+              </button>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
-              Satellite Entity
-              <Tooltip title="Satellite Entity" content="The actual physical spacecraft orbiting Earth. A single satellite usually carries several different cameras or scanners to take pictures." />
-            </label>
-            <select
-              required
-              value={selectedSatelliteId}
-              onChange={(e) => setSelectedSatelliteId(e.target.value)}
-              className="glass-input w-full"
-            >
-              <option value="">-- Choose a Satellite --</option>
-              {satellites.map((sat) => (
-                <option key={sat.satellite_id} value={sat.satellite_id}>
-                  {sat.name} (Agency: {sat.agency}) — ID: {sat.satellite_id}
-                </option>
-              ))}
-            </select>
+          {/* Quick Search & Optional Sensor Filter */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 relative">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search by Frame ID, Image ID, or status..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="glass-input w-full pl-9 text-xs"
+              />
+            </div>
+            <div>
+              <select
+                value={selectedSatelliteId}
+                onChange={(e) => setSelectedSatelliteId(e.target.value)}
+                className="glass-input w-full text-xs"
+              >
+                <option value="">Filter by Satellite (Optional)</option>
+                {satellites.map((sat) => (
+                  <option key={sat.satellite_id} value={sat.satellite_id}>
+                    {sat.name} ({sat.agency})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {/* SELECTED MIX TRAY (Active Basket) */}
+          {selectedList.length > 0 && (
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-cyan-900/50 space-y-3 animate-fade-in shadow-inner">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                  Selected Mix Composition:
+                  <span className="text-cyan-400 font-mono font-bold">
+                    {rawCount} Raw Frame{rawCount !== 1 ? 's' : ''} + {reconCount} Reconstructed Product{reconCount !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={distributeWeightsEvenly}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium underline self-start sm:self-auto"
+                >
+                  Distribute Weights Evenly
+                </button>
+              </div>
+
+              {/* Chips Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                {selectedList.map((item) => {
+                  const isRecon = item.source_dataset === 'RECONSTRUCTED' || String(item.frame_id).startsWith('REC-')
+                  const label = isRecon 
+                    ? `Product #${item.scene_id || String(item.frame_id).replace('REC-', '')}` 
+                    : `Frame #${item.frame_id}`
+
+                  return (
+                    <div 
+                      key={item.frame_id}
+                      className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${
+                        isRecon 
+                          ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200' 
+                          : 'bg-slate-950/60 border-slate-800 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt="" className="w-8 h-8 rounded object-cover border border-slate-700 shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center shrink-0">
+                            {isRecon ? <Sparkles className="w-4 h-4 text-emerald-400" /> : <Satellite className="w-4 h-4 text-cyan-400" />}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-mono font-bold truncate text-[11px]">{label}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {isRecon ? 'Parent Reconstructed' : `${item.cloud_cover_pct}% cloud`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-slate-400 font-mono">Wt:</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          value={item.weight}
+                          onChange={(e) => updateFrameWeight(String(item.frame_id), parseFloat(e.target.value) || 0)}
+                          className="glass-input w-16 py-0.5 px-1 text-center font-mono text-cyan-300 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedFrame(String(item.frame_id))}
+                          className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* FRAMES TABLE */}
+          {loadingFrames ? (
+            <div className="p-8 text-center text-cyan-400 font-mono text-xs animate-pulse">
+              Loading frames library...
+            </div>
+          ) : filteredFrames.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs font-mono border border-dashed border-slate-800 rounded-lg">
+              No matching frames or reconstructed products found for this filter.
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-[380px] overflow-y-auto border border-slate-800/80 rounded-lg">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/90 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-800 sticky top-0 backdrop-blur-sm z-10">
+                  <tr>
+                    <th className="p-3 w-10 text-center">Select</th>
+                    <th className="p-3">Source Type</th>
+                    <th className="p-3">Identifier</th>
+                    <th className="p-3">Capture / Logged Date</th>
+                    <th className="p-3">Observation Quality</th>
+                    <th className="p-3">Preview</th>
+                    <th className="p-3 w-36">Contribution Weight</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {filteredFrames.map((rf) => {
+                    const frameIdStr = String(rf.frame_id)
+                    const isSelected = Boolean(selectedFramesMap[frameIdStr])
+                    const selectedObj = selectedFramesMap[frameIdStr]
+                    const isRecon = rf.source_dataset === 'RECONSTRUCTED' || String(rf.frame_id).startsWith('REC-')
+
+                    return (
+                      <tr 
+                        key={rf.frame_id} 
+                        className={`transition-colors ${
+                          isSelected 
+                            ? isRecon ? 'bg-emerald-950/20' : 'bg-cyan-950/25'
+                            : 'hover:bg-slate-900/40'
+                        }`}
+                      >
+                        <td className="p-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleFrameSelection(rf)}
+                            className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+                          />
+                        </td>
+                        <td className="p-3 font-sans">
+                          {isRecon ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 w-fit">
+                              <Sparkles className="w-2.5 h-2.5" /> RECONSTRUCTED
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-950 text-blue-300 border border-blue-800 flex items-center gap-1 w-fit">
+                              <Satellite className="w-2.5 h-2.5" /> RAW SATELLITE
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-semibold">
+                          {isRecon ? (
+                            <span className="text-emerald-400">
+                              Image #{rf.scene_id || frameIdStr.replace('REC-', '')}
+                              <span className="text-[10px] text-slate-500 font-normal block font-sans">
+                                (Frame Ref: #{rf.frame_id})
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-cyan-400">Frame #{rf.frame_id}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-300 font-sans text-[11px]">
+                          {new Date(rf.capture_timestamp).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-slate-300 font-sans text-[11px]">
+                          {isRecon ? (
+                            <span className="text-emerald-400 font-mono">0.0% Cloud (Clean Product)</span>
+                          ) : (
+                            <span className="font-mono">{rf.cloud_cover_pct}% Cloud</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {rf.image_url ? (
+                            <img 
+                              src={rf.image_url} 
+                              alt="" 
+                              className="w-9 h-9 rounded object-cover border border-slate-700 bg-slate-950" 
+                            />
+                          ) : (
+                            <span className="text-slate-600 text-[10px] font-sans">No Preview</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {isSelected ? (
+                            <input
+                              type="number"
+                              step="0.05"
+                              min="0"
+                              max="1"
+                              value={selectedObj.weight}
+                              onChange={(e) => updateFrameWeight(frameIdStr, parseFloat(e.target.value) || 0)}
+                              className="glass-input w-24 py-1 text-center font-mono text-cyan-300"
+                            />
+                          ) : (
+                            <span className="text-slate-600 text-[11px] font-sans">Unselected</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {/* Step B: Cascading Sensor Selection */}
-        {selectedSatelliteId && (
-          <div className="glass-panel p-6 space-y-4 animate-fade-in">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">
-              <Layers className="w-4 h-4 text-indigo-400" />
-              Step 2: Select Sensor (Filtered for selected Satellite)
-            </div>
-
-            {sensors.length === 0 ? (
-              <div className="text-xs text-slate-500 py-2">No sensors registered under this satellite.</div>
-            ) : (
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
-                  Satellite Sensor
-                  <Tooltip title="Sensor Modality" content="The specific camera or scanner used. Some take normal photos (Optical), some see heat (Infrared), and some use radar to see through clouds. Each type needs a different computer program to process the image." />
-                </label>
-                <select
-                  required
-                  value={selectedSensorId}
-                  onChange={(e) => setSelectedSensorId(e.target.value)}
-                  className="glass-input w-full"
-                >
-                  <option value="">-- Choose a Sensor --</option>
-                  {sensors.map((s) => (
-                    <option key={s.sensor_id} value={s.sensor_id}>
-                      Sensor #{s.sensor_id} — Type: {s.sensor_type} (Resolution: {s.resolution})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step C: Frame Multi-Select & Contribution Weights */}
-        {selectedSensorId && (
-          <div className="glass-panel p-6 space-y-4 animate-fade-in">
-            <div className="flex flex-col gap-2 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                <CheckSquare className="w-4 h-4 text-emerald-400" />
-                Step 3: Select Contributing Raw Frames & Set Weights (0.0 to 1.0)
-                <Tooltip title="Contribution Weights" content="To get one clear picture, we often combine several blurry ones. If one picture has less cloud cover or is sharper, we give it a higher 'weight' so it has more influence on the final result." />
-              </div>
-              <div className="text-xs text-cyan-400 font-mono">
-                {Object.keys(selectedFramesMap).length} frame(s) selected
-              </div>
-            </div>
-
-            {rawFrames.length === 0 ? (
-              <div className="text-xs text-slate-500 py-2">No raw frames recorded for this sensor.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-800">
-                    <tr>
-                      <th className="p-3 w-10 text-center">Select</th>
-                      <th className="p-3">Frame ID</th>
-                      <th className="p-3">Capture Timestamp</th>
-                      <th className="p-3">Cloud Cover %</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3 w-40">Contribution Weight (0-1)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {rawFrames.map((rf) => {
-                      const frameIdStr = String(rf.frame_id)
-                      const isSelected = Boolean(selectedFramesMap[frameIdStr])
-                      const selectedObj = selectedFramesMap[frameIdStr]
-
-                      return (
-                        <tr key={rf.frame_id} className={`transition-colors ${isSelected ? 'bg-cyan-950/30' : 'hover:bg-slate-900/40'}`}>
-                          <td className="p-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleFrameSelection(rf)}
-                              className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
-                            />
-                          </td>
-                          <td className="p-3 font-semibold text-cyan-400">#{rf.frame_id}</td>
-                          <td className="p-3 text-slate-300 font-sans">{new Date(rf.capture_timestamp).toLocaleString()}</td>
-                          <td className="p-3 text-slate-300 font-sans">{rf.cloud_cover_pct}%</td>
-                          <td className="p-3 text-slate-400 font-sans">{rf.status}</td>
-                          <td className="p-3">
-                            {isSelected ? (
-                              <input
-                                type="number"
-                                step="0.05"
-                                min="0"
-                                max="1"
-                                value={selectedObj.weight}
-                                onChange={(e) => updateFrameWeight(frameIdStr, parseFloat(e.target.value) || 0)}
-                                className="glass-input w-24 py-1 text-center font-mono text-cyan-300"
-                              />
-                            ) : (
-                              <span className="text-slate-600 text-[11px] font-sans">Unselected</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step D: Algorithm & JSONB Parameters */}
+        {/* Step 2: Algorithm & JSONB Parameters */}
         <div className="glass-panel p-6 space-y-6">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">
             <Cpu className="w-4 h-4 text-amber-400" />
-            Step 4: Algorithm & Execution Parameters (JSONB)
+            Step 2: Algorithm & Execution Parameters (JSONB)
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] text-slate-400 mb-1 uppercase tracking-wider flex items-center">
-                Algorithm Used
-                <Tooltip title="Reconstruction Algorithms" content="The computer program used to clean up the image. Traditional math programs are very accurate but can look blurry. Modern AI programs (like ESRGAN) make images look incredibly sharp, but sometimes they 'guess' details that aren't really there." />
+                Reconstruction Algorithm
+                <Tooltip title="Algorithm Logic" content="The computer mathematical method used to rebuild the picture. Traditional methods (like POCS) stick strictly to what the sensors saw. Generative AI methods (like ESRGAN) make images look sharp, and refine previously reconstructed base products." />
               </label>
               <select
                 value={algorithmUsed}
@@ -455,7 +669,7 @@ export default function LogNewJobPage() {
               </select>
             </div>
 
-              {algorithmUsed === 'OTHER' && (
+            {algorithmUsed === 'OTHER' && (
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Specify Custom Algorithm Name</label>
                 <input

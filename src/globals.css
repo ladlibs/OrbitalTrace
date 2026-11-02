@@ -24,6 +24,12 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
   }
+
+  .theme-light {
+    --background: 210 40% 98%;
+    --foreground: 222.2 84% 4.9%;
+    --border: 214.3 31.8% 91.4%;
+  }
 }
 
 @layer base {
@@ -31,7 +37,10 @@
     @apply border-border;
   }
   body {
-    @apply bg-slate-950 text-slate-100;
+    @apply bg-slate-950 text-slate-100 transition-colors duration-200;
+  }
+  body.theme-light {
+    @apply bg-slate-50 text-slate-900;
   }
 }
 
@@ -39,13 +48,62 @@
   .glass-panel {
     @apply bg-slate-950/60 backdrop-blur-xl border border-slate-800 shadow-2xl rounded-2xl;
   }
+  body.theme-light .glass-panel {
+    @apply bg-white border border-slate-200 shadow-md text-slate-900;
+  }
   .glass-input {
     @apply w-full px-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder:text-slate-500;
+  }
+  body.theme-light .glass-input {
+    @apply bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-cyan-600 focus:ring-cyan-600;
   }
   .btn-primary {
     @apply flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors font-medium border border-cyan-500 shadow-[0_0_15px_rgba(8,145,178,0.3)] hover:shadow-[0_0_20px_rgba(8,145,178,0.5)];
   }
+  body.theme-light .btn-primary {
+    @apply bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600 shadow-sm;
+  }
   .btn-secondary {
     @apply flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg transition-colors font-medium border border-slate-700 hover:border-slate-600;
   }
+  body.theme-light .btn-secondary {
+    @apply bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300;
+  }
+
+  /* Light theme table styles */
+  body.theme-light table thead {
+    @apply bg-slate-100 text-slate-600 border-slate-200;
+  }
+  body.theme-light table tbody tr {
+    @apply hover:bg-slate-50/80 border-slate-200 text-slate-800;
+  }
+  body.theme-light nav {
+    @apply bg-white/95 border-slate-200 text-slate-900;
+  }
+}
+
+/* Light theme utility color overrides outside of @layer to prevent Tailwind @apply circular dependencies */
+body.theme-light .text-slate-400 {
+  color: #64748b !important;
+}
+body.theme-light .text-slate-300 {
+  color: #334155 !important;
+}
+body.theme-light .text-slate-200 {
+  color: #0f172a !important;
+}
+body.theme-light .text-slate-100 {
+  color: #020617 !important;
+}
+body.theme-light .bg-slate-950 {
+  background-color: rgba(241, 245, 249, 0.85) !important;
+}
+body.theme-light .bg-slate-900 {
+  background-color: #f1f5f9 !important;
+}
+body.theme-light .border-slate-800 {
+  border-color: #e2e8f0 !important;
+}
+body.theme-light .border-slate-700 {
+  border-color: #cbd5e1 !important;
 }

@@ -25,6 +25,10 @@ type RawFrameNodeData = {
 type JobNodeData = {
   id: number
   algorithm: string
+  status?: string
+  ra?: number | string
+  gci?: number | string
+  isQuarantined?: boolean
 }
 
 type ReconstructedNodeData = {
@@ -63,15 +67,36 @@ function RawFrameNode({ data }: { data: RawFrameNodeData }) {
 
 // 2. Job Node
 function JobNode({ data }: { data: JobNodeData }) {
+  const isQuarantined = data.isQuarantined || data.status === 'FAILED'
   return (
-    <div className="bg-cyan-950/80 border-2 border-cyan-800/80 rounded-full py-2 px-6 shadow-xl shadow-cyan-900/20 font-sans flex items-center gap-2">
-      <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-cyan-500" />
-      <Cpu className="w-4 h-4 text-cyan-400" />
-      <div>
-        <div className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider">Job #{data.id}</div>
-        <div className="text-[10px] text-cyan-500 font-mono">{data.algorithm}</div>
+    <div className={`border-2 rounded-xl py-2 px-4 shadow-xl font-sans min-w-[200px] ${
+      isQuarantined 
+        ? 'bg-rose-950/90 border-rose-600 text-rose-200 shadow-rose-950/50' 
+        : 'bg-cyan-950/80 border-cyan-800/80 text-cyan-200 shadow-cyan-900/20'
+    }`}>
+      <Handle type="target" position={Position.Top} className={`w-2 h-2 ${isQuarantined ? '!bg-rose-500' : '!bg-cyan-500'}`} />
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1 mb-1">
+        <div className="flex items-center gap-1.5">
+          <Cpu className={`w-3.5 h-3.5 ${isQuarantined ? 'text-rose-400' : 'text-cyan-400'}`} />
+          <span className="text-[11px] font-bold uppercase tracking-wider">Job #{data.id}</span>
+        </div>
+        {isQuarantined ? (
+          <span className="text-[8px] px-1.5 py-0.5 rounded bg-rose-900 text-rose-200 font-bold font-mono">QUARANTINED</span>
+        ) : (
+          <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono">r_a = {data.ra ?? '0.00'}</span>
+        )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-cyan-500" />
+      <div className="text-[10px] font-mono opacity-90 flex justify-between">
+        <span>Algorithm:</span>
+        <span className="font-bold">{data.algorithm}</span>
+      </div>
+      {data.gci !== undefined && (
+        <div className="text-[10px] font-mono opacity-90 flex justify-between mt-0.5">
+          <span>Synthetic Share:</span>
+          <span className="font-bold text-purple-300">{data.gci}</span>
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} className={`w-2 h-2 ${isQuarantined ? '!bg-rose-500' : '!bg-cyan-500'}`} />
     </div>
   )
 }
@@ -81,28 +106,30 @@ function ReconstructedNode({ data }: { data: ReconstructedNodeData }) {
   const psnr = data.psnr
   const ssim = data.ssim
   return (
-    <div className="bg-slate-900 border-2 border-emerald-800/50 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/20 w-64 font-sans">
+    <div className="bg-slate-900 border-2 border-emerald-800/50 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/20 w-60 font-sans">
       <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-emerald-500" />
       <div className="bg-emerald-950/50 p-2 text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex justify-between items-center border-b border-emerald-900/50">
         <div className="flex items-center gap-2">
           <ImageIcon className="w-3.5 h-3.5" />
           Output Image #{data.id}
         </div>
-        <span className="bg-emerald-900 text-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-mono">{data.resolution}</span>
+        <Link to={`/inspect/${data.id}`} className="bg-emerald-900 hover:bg-emerald-800 text-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-mono transition-colors">
+          Inspect
+        </Link>
       </div>
       {data.imageUrl ? (
-        <img src={data.imageUrl} alt="Reconstructed" className="w-full h-32 object-cover" />
+        <img src={data.imageUrl} alt="Reconstructed" className="w-full h-28 object-cover" />
       ) : (
-        <div className="w-full h-32 bg-slate-950 flex items-center justify-center text-[10px] text-slate-600">No URL Available</div>
+        <div className="w-full h-28 bg-slate-950 flex items-center justify-center text-[10px] text-slate-600">No URL Available</div>
       )}
-      <div className="p-3 bg-slate-950 text-[10px] grid grid-cols-2 gap-2">
-        <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
+      <div className="p-2 bg-slate-950 text-[10px] grid grid-cols-2 gap-2">
+        <div className="bg-slate-900 border border-slate-800 rounded p-1 text-center">
           <div className="text-slate-500 uppercase text-[8px] mb-0.5">PSNR</div>
-          <div className="font-mono text-cyan-400 font-bold">{psnr != null ? `${psnr.toFixed(2)} dB` : 'N/A'}</div>
+          <div className="font-mono font-bold text-cyan-400">{psnr ? `${Number(psnr).toFixed(2)} dB` : 'N/A'}</div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
+        <div className="bg-slate-900 border border-slate-800 rounded p-1 text-center">
           <div className="text-slate-500 uppercase text-[8px] mb-0.5">SSIM</div>
-          <div className="font-mono text-cyan-400 font-bold">{ssim != null ? ssim.toFixed(4) : 'N/A'}</div>
+          <div className="font-mono font-bold text-emerald-400">{ssim ? Number(ssim).toFixed(4) : 'N/A'}</div>
         </div>
         <div className="col-span-2 mt-1">
           <Link 
@@ -146,7 +173,7 @@ export default function LineagePage() {
       // but populated with actual data from Supabase.
       
       const { data: rawData } = await supabase.from('raw_frame').select('*')
-      const { data: jobData } = await supabase.from('reconstruction_job').select('*')
+      const { data: jobData } = await supabase.from('reconstruction_job').select('*').order('job_id', { ascending: true })
       const { data: imgData } = await supabase.from('reconstructed_image').select('*')
       const { data: qData } = await supabase.from('quality_assessment').select('*')
       const { data: ctData } = await supabase.from('contributes_to').select('*')
@@ -159,43 +186,99 @@ export default function LineagePage() {
       const newEdges: any[] = []
 
       // Let's dynamically layout the dataset
-      // Top row: Raw frames
-      const frames = rawData.sort((a,b) => a.frame_id - b.frame_id)
+      // Top row: only true Raw frames (exclude mirrored reconstructed products)
+      const frames = rawData
+        .filter((f) => f.source_dataset !== 'RECONSTRUCTED' && !String(f.frame_id).startsWith('REC-'))
+        .sort((a,b) => a.frame_id - b.frame_id)
+
       frames.forEach((f, index) => {
         newNodes.push({
           id: `frame-${f.frame_id}`,
           type: 'rawFrame',
-          position: { x: index * 220 + 50, y: 50 },
+          position: { x: index * 240 + 60, y: 30 },
           data: { id: f.frame_id, cloud: f.cloud_cover_pct, imageUrl: f.image_url }
         })
       })
 
-      // Jobs and Images
+      // Build a weight-sum per job for normalisation
+      const jobWeightSums: Record<string, number> = {}
+      ctData?.forEach(ct => {
+        const jk = String(ct.job_id)
+        jobWeightSums[jk] = (jobWeightSums[jk] || 0) + (ct.contribution_weight || 0)
+      })
+
+      // Jobs and Images (Diamond DAG Topology)
       jobData.forEach((job, i) => {
         // Find if this job produced an image, and if that image has a parent
         const resultingImg = imgData.find(img => String(img.job_id) === String(job.job_id))
-        const isRefinement = resultingImg && resultingImg.original_image_id != null
         
-        // Simple layout logic: Base jobs lower down, Refinement jobs even lower
-        const yBase = isRefinement ? 650 : 300
-        const xPos = i * 320 + 50
+        let xPos = 400
+        let yBase = 260
+
+        if (i === 0) {
+          xPos = 400
+          yBase = 260
+        } else if (i === 1) {
+          xPos = 140
+          yBase = 580
+        } else if (i === 2) {
+          xPos = 660
+          yBase = 580
+        } else if (i === 3) {
+          xPos = 400
+          yBase = 900
+        } else if (i === 4) {
+          xPos = 240
+          yBase = 1220
+        } else if (i >= 5) {
+          xPos = 560
+          yBase = 1220
+        }
+
+        const isQuarantined = job.status === 'FAILED' || job.parameters?.anomaly_gate === 'TRIGGERED'
+        const raVal = job.parameters?.ra !== undefined ? Number(job.parameters.ra).toFixed(2) : (job.algorithm_used === 'ESRGAN' ? '0.35' : '0.00')
+        const gciVal = job.parameters?.gci !== undefined ? `${(Number(job.parameters.gci) * 100).toFixed(1)}%` : (job.algorithm_used === 'ESRGAN' ? '35.0%' : '0.0%')
 
         // Job Node
         newNodes.push({
           id: `job-${job.job_id}`,
           type: 'job',
-          position: { x: xPos + 50, y: yBase },
-          data: { id: job.job_id, algorithm: job.algorithm_used }
+          position: { x: xPos + 10, y: yBase },
+          data: { 
+            id: job.job_id, 
+            algorithm: job.algorithm_used,
+            status: job.status,
+            ra: raVal,
+            gci: gciVal,
+            isQuarantined
+          }
         })
 
         // Connect Frames -> Job
         ctData?.filter(ct => String(ct.job_id) === String(job.job_id)).forEach(ct => {
+          const matchedFrame = rawData.find(f => String(f.frame_id) === String(ct.frame_id))
+          const isRecon = matchedFrame?.source_dataset === 'RECONSTRUCTED' || String(ct.frame_id).startsWith('REC-')
+          const parentImgId = isRecon ? (matchedFrame?.scene_id || String(ct.frame_id).replace('REC-', '')) : null
+
+          const sourceNodeId = isRecon && parentImgId ? `img-${parentImgId}` : `frame-${ct.frame_id}`
+
+          const totalWeight = jobWeightSums[String(job.job_id)] || 1
+          const rawWeight = ct.contribution_weight || 0
+          const normalizedPct = Math.round((rawWeight / (totalWeight > 0 ? totalWeight : 1)) * 100)
+
           newEdges.push({
-            id: `edge-f${ct.frame_id}-j${job.job_id}`,
-            source: `frame-${ct.frame_id}`,
+            id: `edge-${sourceNodeId}-j${job.job_id}`,
+            source: sourceNodeId,
             target: `job-${job.job_id}`,
             animated: true,
-            style: { stroke: '#475569', strokeWidth: 2 }
+            label: isRecon ? `Parent Input (${normalizedPct}%)` : `${normalizedPct}%`,
+            labelStyle: { fill: isRecon ? '#34d399' : '#94a3b8', fontSize: 10, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a' },
+            style: { 
+              stroke: isRecon ? '#059669' : '#475569', 
+              strokeWidth: 2,
+              strokeDasharray: isRecon ? '5,5' : undefined
+            }
           })
         })
 
@@ -207,7 +290,7 @@ export default function LineagePage() {
           newNodes.push({
             id: `img-${resultingImg.image_id}`,
             type: 'reconstructed',
-            position: { x: xPos, y: yBase + 120 },
+            position: { x: xPos - 20, y: yBase + 110 },
             data: { id: resultingImg.image_id, imageUrl: resultingImg.image_url, resolution: resultingImg.resolution, psnr, ssim }
           })
 
@@ -219,18 +302,24 @@ export default function LineagePage() {
             style: { stroke: '#0891b2', strokeWidth: 2 }
           })
 
-          // If it's a refinement, connect Parent Image -> Refinement Job
+          // If it's a refinement and not already connected via ctData
+          const isRefinement = Boolean(resultingImg?.original_image_id)
           if (isRefinement) {
-            newEdges.push({
-              id: `edge-i${resultingImg.original_image_id}-j${job.job_id}`,
-              source: `img-${resultingImg.original_image_id}`,
-              target: `job-${job.job_id}`,
-              animated: true,
-              label: 'Refines Parent',
-              labelStyle: { fill: '#94a3b8', fontSize: 10, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0f172a' },
-              style: { stroke: '#059669', strokeWidth: 2, strokeDasharray: '5,5' }
-            })
+            const alreadyConnected = newEdges.some(
+              e => e.source === `img-${resultingImg.original_image_id}` && e.target === `job-${job.job_id}`
+            )
+            if (!alreadyConnected) {
+              newEdges.push({
+                id: `edge-i${resultingImg.original_image_id}-j${job.job_id}`,
+                source: `img-${resultingImg.original_image_id}`,
+                target: `job-${job.job_id}`,
+                animated: true,
+                label: 'Refines Parent',
+                labelStyle: { fill: '#34d399', fontSize: 10, fontFamily: 'monospace' },
+                labelBgStyle: { fill: '#0f172a' },
+                style: { stroke: '#059669', strokeWidth: 2, strokeDasharray: '5,5' }
+              })
+            }
           }
         }
       })

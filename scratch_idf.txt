@@ -1,0 +1,342 @@
+<USER_REQUEST>
+
+Invention Disclosure Format (IDF)-B
+Document No. 02-IPR-R003
+Vellore Institute of Technology
+Issue No/Date: 2 / 01.02.2024
+(Deemed to be University under section 3 of UGC Act, 1956)
+Amd. No/Date: 0 / 00.00.0000
+ 
+
+1.  Title of the invention:
+
+A Provenance-Aware, Cycle-Safe, Multi-Generation Per-Pixel Source and Synthetic Share Propagation System and Control Algorithm for Satellite Image Reconstruction
+
+(Project name: OrbitalTrace — Provenance-Aware Satellite Image Reconstruction)
+
+2.  Field /Area of invention:
+
+• Spatially resolved per-pixel data provenance and lineage control
+• Multi-generation directed acyclic graph (DAG) weight propagation algorithms
+• Cryptographic hash-chained image authenticity verification
+• Deterministic pipeline gating and generative hallucination control
+• Remote sensing and satellite image super-resolution
+3.  Prior Patents and Publications from literature (summary of prior art):
+
+Sr. No.
+Patent / Publication (IEEE Format)
+Description
+Relevance to Your Invention
+1
+B. Wronski et al., “Handheld Multi-Frame Super-Resolution,” ACM Trans. Graph., vol. 38, no. 4, Art. 28, Jul. 2019.
+Merges a burst of raw frames using per-pixel anisotropic Gaussian kernel weights (wn,i) and a motion robustness mask (R̂n).
+Computes per-pixel frame weights during a single merge step, but discards weights after normalization; lacks persistent per-pixel provenance layers, multi-generation DAG propagation, or inherited synthetic share tracking.
+2
+J. Brandt et al. (Adobe Inc.), “Tracking Changes to Electronic Documents via a Decentralized Ledger,” US Patent 11,146,381 B2, Oct. 19, 2021.
+Links sequential document edit states using cryptographic fingerprints in a ledger to trace editing history.
+Whole-document hash-chained edit history only; does not compute per-pixel sensor frame contribution vectors, 3-state pixel class maps, or compounding synthetic shares across passes.
+3
+D. Muff (Iceye Oy), “Generating Synthetic Aperture Radar Image Data,” European Patent Application EP 4,530,673 A1, Apr. 2, 2025.
+Pre-computes per-pixel amplitude (√(I²+Q²)) and phase (tan-1(Q/I)) data bands in a GeoTIFF container from raw SAR signals.
+Single-pass SAR signal-to-GeoTIFF formatting; lacks multi-generation super-resolution refinement tracking, per-pixel source weight propagation, or hash-linked DAG verification.
+4
+T. J. Green, G. Karvounarakis, and V. Tannen, “Provenance Semirings,” in Proc. ACM SIGMOD-SIGACT-SIGART Symp. Principles of Database Systems (PODS), 2007, pp. 31–40.
+Algebraic framework for propagating annotations/weights through relational database queries (join/project/union).
+Relational database tuple algebra only; does not handle spatial raster alignment, cloud-occlusion pixel masks, 3-state pixel classification (OBSERVED, WEAK, SYNTHESIZED), or generative contamination compounding.
+5
+Coalition for Content Provenance and Authenticity (C2PA), “C2PA Technical Specification,” v2.1, 2024, and J. Wu et al., “When the Forger Is the Judge,” arXiv, Apr. 2026.
+Signed manifest attestations for media files (C2PA) and forensic evaluation of AI-edited document masks (Wu et al.).
+File-level or static action-region manifests; lacks quantitative per-pixel raw-sensor share propagation across multi-pass super-resolution DAGs and PSNR/SSIM regression gating.
+6
+D. Jiang and J. Shen (PayPal, Inc.), “Graphical User Interface to Depict Data Lineage Information in Levels,” US Patent 12,645,655 B2, Jun. 2, 2026, and M. Demazeau et al. (Amadeus S.A.S.), EP 4,478,216 A1, Dec. 2024.
+Enterprise database lineage tracking via metadata identifiers/dummy values and multi-level upstream/downstream GUI panels.
+Coarse enterprise database table/node lineage; lacks image processing, per-pixel uncertainty/source layers, or continuous sensor weight composition.
+References:
+
+1. B. Wronski et al., “Handheld Multi-Frame Super-Resolution,” ACM Trans. Graph., vol. 38, no. 4, Art. 28, Jul. 2019.
+2. J. Brandt et al., “Tracking Changes to Electronic Documents via a Decentralized Ledger,” US Patent 11,146,381 B2, Oct. 19, 2021.
+3. D. Muff, “Generating Synthetic Aperture Radar Image Data,” European Patent Application EP 4,530,673 A1, Apr. 2, 2025.
+4. T. J. Green, G. Karvounarakis, and V. Tannen, “Provenance Semirings,” in Proc. ACM PODS, 2007, pp. 31–40.
+5. Coalition for Content Provenance and Authenticity (C2PA), “Content Credentials Technical Specification,” 2024.
+6. D. Jiang and J. Shen, “Graphical User Interface to Depict Data Lineage Information in Levels,” US Patent 12,645,655 B2, Jun. 2, 2026.
+7. M. Demazeau et al., “Device, System and Method for Data Lineage Tracking, Reporting and Database Updating,” EP Patent 4,478,216 A1, Dec. 18, 2024.
+Summary and background of the invention (Address the gap / Novelty)
+
+Research Gap:
+Existing satellite image super-resolution and data provenance solutions:
+
+• Discard per-pixel frame fusion weights immediately after producing a merged image (e.g., Wronski et al., 2019).
+• Record only single-pass, winner-take-all scene indices or binary quality flags (e.g., standard MODIS/Landsat composites).
+• Attach coarse, file-level cryptographic manifests (e.g., C2PA, W3C PROV) that treat deterministic interpolation and generative neural synthesis identically.
+• Cannot compose per-pixel raw sensor shares when a reconstructed image is fed as an input into subsequent generations of refinement.
+• Do not track how synthetic (gap-filled or hallucinated) pixel fractions compound across successive passes.
+• Do not enforce deterministic pipeline gating when parent hashes are altered or when generative refinement inflates structural sharpness (SSIM) while degrading physical signal fidelity (PSNR).
+There exists no formally defined satellite reconstruction and provenance control architecture that:
+
+• Preserves and composes continuous per-pixel raw-frame weight vectors (SOURCE_WEIGHT) across multi-generation refinement DAGs.
+• Explicitly separates and propagates an inherited per-pixel synthetic share (SI(u,v)) alongside physical sensor shares.
+• Enforces a three-state pixel classification invariant (OBSERVED, WEAK, SYNTHESIZED) co-registered with calibrated pixel uncertainty (UNCERTAINTY) and dominant source indices (SOURCE_INDEX).
+• Binds multi-generation pixel provenance layers to cycle-guarded, hash-linked DAG records with automated pipeline quarantine gating.
+Solution:
+OrbitalTrace is a provenance-aware multi-frame satellite image reconstruction system and deterministic propagation engine that:
+
+• Reconstructs high-resolution satellite imagery from multiple raw frames and/or parent reconstructed images while generating four spatially aligned per-pixel provenance layers (IMAGE, CLASS_MAP, UNCERTAINTY, SOURCE_INDEX) backed by a per-pixel SOURCE_WEIGHT tensor.
+• Classifies every output pixel into one of three physical states (OBSERVED, WEAK, SYNTHESIZED) based on unoccluded sensor support and inherited synthetic share.
+• Recursively composes per-pixel raw sensor frame shares and compounding synthetic shares across arbitrary multi-parent refinement DAGs with cycle-guard enforcement.
+• Binds input image digests, output layer digests, algorithm parameters, and parent record hashes into a tamper-evident hash-linked DAG.
+• Enforces pipeline gating invariants that quarantine outputs upon detecting ancestor hash tampering or quality-regression anomalies (ΔSSIM > τ1 ∧ ΔPSNR < −τ2).
+Summary:
+OrbitalTrace reframes multi-frame satellite image super-resolution from an opaque pixel-generation process into a quantitatively auditable, pixel-level provenance propagation and authenticity control system governed by conservation invariants and cryptographic hash-DAG verification.
+
+Novelty:
+• Per-Pixel Multi-Generation Share Composition: Composing fractional per-pixel raw-frame weights and an inherited synthetic channel across successive refinement passes (including branching and diamond DAG paths).
+• Three-State Spatial Provenance Coupling: Co-registering OBSERVED, WEAK, and SYNTHESIZED pixel classification states with continuous uncertainty [0,1] and dominant frame attribution.
+• Compounding Generative Contamination Index (GCI) Cross-Validation: Recursively propagating algorithm-specific generative factors ra ∈ [0,1] and cross-checking against measured synthetic pixel fractions.
+• Hash-Linked DAG & Quality-Regression Gating: Binding spatial provenance layers to parent record hashes and gating downstream jobs upon ancestor tamper detection or SSIM/PSNR divergence.
+4.  Objective(s) of Invention
+
+• To reconstruct high-resolution satellite imagery from multiple raw sensor frames and/or prior reconstructed images while preserving pixel-level traceability to original sensor acquisitions.
+• To generate spatially aligned per-pixel provenance layers (CLASS_MAP [Observed, Weak, Synthesized], UNCERTAINTY, SOURCE_INDEX, and SOURCE_WEIGHT) for every reconstruction pass.
+• To mathematically propagate fractional raw-frame contributions and inherited synthetic shares across multi-generation refinement DAGs while preventing cyclic lineage.
+• To detect silent tampering of historical weights, parameters, or parent links via cryptographic hash-chained DAG records.
+• To prevent hallucination amplification across refinement chains through quality-regression anomaly detection and automated pipeline gating.
+5.  Working principle of the invention (in brief)
+
+The OrbitalTrace system operates as a multi-generation image reconstruction and provenance propagation pipeline. When a reconstruction job J is executed on a set of inputs (raw satellite frames with cloud masks and/or previously reconstructed parent images), the backend fusion engine (run_job.py) aligns and merges the inputs to produce a reconstructed raster I. Concurrently, for every pixel coordinate (u,v), the engine computes a fractional source-weight vector WI(u,v)[f] over ancestral raw frames f and an inherited synthetic share SI(u,v) ∈ [0,1] accounting for cloud-gap interpolation and generative model injection (ra). From these propagated shares and inter-frame residuals, the engine emits a three-state CLASS_MAP (OBSERVED, WEAK, SYNTHESIZED), a calibrated UNCERTAINTY map ∈ [0,1], and a SOURCE_INDEX map.
+
+A cycle-guarded DAG engine links the job’s input hashes, output layer hashes, parameters, and parent record hashes into a provenance_record. Before any reconstructed image I is permitted to serve as a parent input for a subsequent refinement generation, the pipeline controller verifies ancestral hash-link integrity and checks that inter-generation quality metrics (PSNR, SSIM) and synthetic contamination bounds satisfy safety invariants.
+
+6.  Description of the invention in detail
+
+6.1 System Inputs
+Raw Satellite Frame Set ℱ = {f1, f2, …, fm}: Each raw frame fk is an optical or SAR satellite capture of spatial dimensions (H0 × W0) associated with sensor metadata and a per-pixel cloud/missing-data mask mk(u,v) ∈ [0,1], where mk(u,v) = 0 denotes an unoccluded physical sensor observation and mk(u,v) = 1 denotes total occlusion.
+
+Job Input Set Inputs(J) and Contribution Weights w(x,J): A reconstruction job J at generation depth g ∈ ℕ receives inputs x ∈ Inputs(J) (where each x is either a raw frame fk or a parent reconstructed image Ip from generation < g) with normalized contribution weights:
+
+Σx ∈ Inputs(J) w(x,J) = 1.0,   w(x,J) ≥ 0
+Algorithm Generative Factor ra ∈ [0,1]: Each reconstruction algorithm a registered in algorithm_class has a calibrated generative factor ra = 0 for deterministic algorithms (e.g., POCS, FUSION_WEIGHTED_V1) and ra ∈ (0,1] for generative neural super-resolution models (e.g., ESRGAN).
+
+6.2 Per-Pixel Provenance State Vector
+For each reconstructed image I and pixel coordinate (u,v) ∈ {1..H} × {1..W}, the system maintains the spatial provenance state vector:
+
+𝒫I(u,v) = { WI(u,v),  SI(u,v),  CI(u,v),  UI(u,v),  DI(u,v) }
+where:
+
+• WI(u,v) = [WI(u,v)[f1], …, WI(u,v)[fm]]: fractional raw-frame contribution vector (SOURCE_WEIGHT).
+• SI(u,v) ∈ [0,1]: inherited and newly injected synthetic pixel share.
+• CI(u,v) ∈ {OBSERVED, WEAK, SYNTHESIZED}: three-state classification label (CLASS_MAP).
+• UI(u,v) ∈ [0,1]: per-pixel reconstruction uncertainty (UNCERTAINTY).
+• DI(u,v) ∈ {1..m, NONE}: dominant contributing raw frame index (SOURCE_INDEX).
+6.3 Multi-Generation Per-Pixel Share Propagation & Conservation Invariant
+Base case (raw frames fk):
+
+Wfk(u,v)[fj] = 1 − mk(u,v) if j = k;  0 if j ≠ k,       Sfk(u,v) = mk(u,v)
+Inductive step (refinement pass J producing image I with algorithm a): Let w̃(u,v)(x,J) be the spatially normalized local weight of input x at pixel (u,v) (accounting for local cloud/validity masks). The per-pixel raw-frame share and synthetic share propagate across generations as:
+
+WI(u,v)[f] = (1 − ra) Σx ∈ Inputs(J) w̃(u,v)(x,J) · Wx(u,v)[f]
+SI(u,v) = (1 − ra) Σx ∈ Inputs(J) w̃(u,v)(x,J) · Sx(u,v) + ra
+When all inputs are occluded at (u,v) and filled by spatial interpolation, WI(u,v)[f] = 0 for all f and SI(u,v) = 1.00.
+
+Provenance Invariant I1 — Per-Pixel Share Conservation:
+
+∀(u,v), ∀ generation g ≥ 1:   Σf ∈ ℱ WI(u,v)[f] + SI(u,v) = 1.0
+At the whole-image DAG level, transitive frame weights c(I)[f] and the compounding Generative Contamination Index (GCI) s(I) are computed recursively as:
+
+c(I)[f] = Σx ∈ Inputs(J) w(x,J) · c(x)[f],     s(I) = (1 − ra) Σx ∈ Inputs(J) w(x,J) · s(x) + ra
+6.4 Three-State CLASS_MAP, UNCERTAINTY, and SOURCE_INDEX Rules
+Given thresholds 0 < θobs < θsynth ≤ 1 (e.g., θobs = 0.20, θsynth = 0.80) and a dominance threshold θdom:
+
+CI(u,v) = OBSERVED, if SI(u,v) ≤ θobs ∧ maxf WI(u,v)[f] ≥ θdom
+CI(u,v) = SYNTHESIZED, if SI(u,v) ≥ θsynth
+CI(u,v) = WEAK, otherwise
+DI(u,v) = NONE, if CI(u,v) = SYNTHESIZED ∨ maxf WI(u,v)[f] = 0;   otherwise argmaxf ∈ ℱ WI(u,v)[f]
+UI(u,v) = min( 1.0,  SI(u,v) + (1 − SI(u,v)) · σ2inter(u,v) )
+where σ2inter(u,v) is the normalized inter-frame radiometric variance at (u,v).
+
+Provenance Invariant I2 — Non-Decreasing Synthetic Monotonicity: For any single-input refinement pass with ra ≥ 0, SI,child(u,v) ≥ SI,parent(u,v). A synthesized pixel can never be relabeled as physically observed without fusing new unoccluded raw sensor frames.
+
+6.5 Cycle-Guarded Hash-Linked DAG and Pipeline Gating
+Each job J generates a record hash:
+
+HJ = SHA-256( CanonicalSerialize( Inputs(J), {Hparent}, a, params, SHA-256(I), SHA-256(𝒫I) ) )
+During recursive CTE lineage traversal, a visited-node set 𝒱 enforces cycle rejection (I ∉ 𝒱).
+
+Provenance Invariant I3 — Tamper-Evident Descendant Invalidation & Anomaly Gating: Let Ghash(I) = 1 if and only if all ancestral hashes and signatures in Ancestors(I) match their recomputed digests, and 0 otherwise. Let the quality-regression anomaly flag be:
+
+A(I) = 𝟙( SSIM(I) − SSIM(Iparent) > τSSIM ∧ PSNR(I) − PSNR(Iparent) < −τPSNR )
+The pipeline gate action is:
+
+PipelineAction(I) = QUARANTINE_BLOCK, if Ghash(I) = 0 ∨ A(I) = 1;   ALLOW_REFINEMENT, otherwise
+6.6 Algorithmic Description
+1. Start — Ingest Inputs: Acquire raw satellite frames {fk} with cloud masks {mk} and/or parent reconstructed images {Ip} with normalized weights w(x,J).
+2. Check DAG Cycle Guard: Traverse ancestral lineage of all parent images Ip; if a cycle or tampered ancestor hash (Ghash = 0) is detected → ABORT & QUARANTINE.
+3. Execute Reconstruction Pass: Run algorithm a (POCS, ESRGAN, FUSION_WEIGHTED_V1) to generate output raster IMAGE I.
+4. Propagate Per-Pixel Shares: For each pixel (u,v), compute raw frame weights WI(u,v)[f] and inherited synthetic share SI(u,v) using algorithm generative factor ra.
+5. Generate Co-Registered Provenance Layers: Assign 3-state CLASS_MAP CI(u,v) ∈ {OBSERVED, WEAK, SYNTHESIZED}; compute calibrated UNCERTAINTY UI(u,v) ∈ [0,1]; assign dominant frame SOURCE_INDEX DI(u,v).
+6. Compute Whole-Image Transitive Metrics: Materialize global effective weights c(I)[f] in frame_lineage_weight and compounding GCI s(I), cross-checking s(I) against CLASS_MAP.
+7. Commit Hash-Linked DAG Record: Serialize input/output digests, parent record_hash array, parameters, and generation depth into provenance_record (and sign with analyst key).
+8. Evaluate Quality-Regression Gate: Compute PSNR and SSIM; if Ghash(I) = 0 or A(I) = 1 → QUARANTINE_BLOCK; else → ALLOW_REFINEMENT & render on Provenance Passport UI. End.
+7.  Proposed Design and Framework:
+
+The OrbitalTrace framework is designed as a provenance-aware, multi-generation satellite image reconstruction and authenticity control architecture. It integrates multi-frame super-resolution, co-registered per-pixel provenance layer generation, recursive DAG share propagation, cryptographic hash-linking, and anomaly-gated pipeline control into a unified closed-loop system.
+
+
+Fig. 1: System architecture (frontend, backend, database, key service, query layer).
+
+
+Fig. 2: Provenance DAG with example weights, propagated effective weights and synthetic share.
+
+
+Fig. 3: Refinement Lineage Chain — raw frames, reconstruction jobs and output images
+
+
+Fig. 4: Refinement Lineage Chain — later refinement jobs and their output images with PSNR/SSIM
+
+7.1 Overall Architectural Structure
+The framework is organized into five interconnected functional components:
+
+1. Multi-Frame Ingestion & Cloud-Mask Preprocessor
+2. Multi-Pass Reconstruction & Per-Pixel Layer Generator
+3. Cycle-Safe Recursive DAG Share Propagation Engine
+4. Cryptographic Hash-DAG & Replay Verification Unit
+5. Quality-Regression Anomaly & Pipeline Quarantine Controller
+7.2 Multi-Frame Ingestion & Cloud-Mask Preprocessor
+Ingests raw satellite sensor frames fk along with cloud-cover metadata and pixel-level occlusion masks mk(u,v). Initializes base-case per-pixel weight vectors Wfk(u,v) and base synthetic shares Sfk(u,v).
+
+
+Fig. 5: Satellite Reconstruction Provenance Dashboard
+
+
+Fig. 6: My Reconstruction Jobs — generated output image metadata (synthetic fraction, uncertainty, PSNR, SSIM)
+
+7.3 Multi-Pass Reconstruction & Per-Pixel Layer Generator
+Executes deterministic (POCS, weighted fusion) or generative (ESRGAN) passes on co-registered inputs. Outputs the reconstructed IMAGE alongside spatially aligned SOURCE_WEIGHT, 3-state CLASS_MAP (OBSERVED, WEAK, SYNTHESIZED), UNCERTAINTY, and SOURCE_INDEX layers.
+
+
+Fig. 7: Provenance Inspector — IMAGE layer (observed pixel selected)
+
+
+Fig. 8: Provenance Inspector — IMAGE layer (synthesized pixel selected)
+
+
+Fig. 9: Provenance Inspector — GROUND_TRUTH layer
+
+
+Fig. 10: Provenance Inspector — ERROR_MAP layer
+
+
+Fig. 11: Provenance Inspector — CLASS_MAP layer
+
+
+Fig. 12: Provenance Inspector — UNCERTAINTY layer
+
+
+Fig. 13: Provenance Inspector — SOURCE_INDEX layer
+
+7.4 Cycle-Safe Recursive DAG Share Propagation Engine
+Walks the directed acyclic graph of parent-to-child image links with a visited-set cycle guard. Composes per-pixel raw sensor frame weights WI(u,v)[f] and compounding synthetic shares SI(u,v) across multiple generations, including diamond graphs where a single raw frame contributes via multiple intermediate images.
+
+7.5 Cryptographic Hash-DAG & Replay Verification Unit
+Binds each pass’s input digests, output layer digests, parameters, container env_digest, random seed, and parent record_hash array into a SHA-256 hash-linked DAG record signed via Ed25519. Supports bit-exact replay verification for deterministic CPU passes and bounded perceptual-hash/RMSE tolerance verification for GPU generative passes.
+
+7.6 Quality-Regression Anomaly & Pipeline Quarantine Controller
+Monitors inter-generation ΔSSIM and ΔPSNR alongside signature/hash validity Ghash(I). Enforces a mandatory quarantine lock if an ancestor hash fails or if hallucinated sharpness (ΔSSIM > τSSIM ∧ ΔPSNR < −τPSNR) is detected.
+
+8.  Experimental validation results (Analytical & Mathematical Proofs):
+
+8.1 Exact Conservation of Per-Pixel Provenance Shares Across Arbitrary DAG Depth (Error = 0%)
+Theorem 1: For any cycle-free multi-generation refinement DAG G = (V,E) of depth D ≥ 1 where each job J has locally normalized input weights Σx w̃(u,v)(x,J) = 1 and generative factor ra ∈ [0,1], the sum of propagated raw sensor frame shares Σf ∈ ℱ WI(u,v)[f] and the inherited synthetic share SI(u,v) is strictly conserved at 1.00 for every pixel (u,v).
+
+Proof: By induction on generation depth g. At g = 0 (raw frame fk):
+
+Σf ∈ ℱ Wfk(u,v)[f] + Sfk(u,v) = (1 − mk(u,v)) + mk(u,v) = 1.0
+Assume the invariant holds for all parent inputs x ∈ Inputs(J) at generation < g. Then for image I produced by job J at generation g:
+
+Σf ∈ ℱ WI(u,v)[f] + SI(u,v) = (1 − ra) Σx w̃(u,v)(x,J) ( Σf ∈ ℱ Wx(u,v)[f] + Sx(u,v) ) + ra
+By the induction hypothesis, the inner sum equals 1.0 for each input x:
+
+= (1 − ra) Σx w̃(u,v)(x,J)(1.0) + ra = (1 − ra)(1.0) + ra = 1.0     ∎
+8.2 Monotonic Compounding of Synthetic Share Across Generative Passes (49% Sensor Retention After 2 Passes at r_{a} = 0.30)
+Theorem 2: Across K consecutive refinement passes with generative factors r1, r2, …, rK ∈ (0,1), the true physical sensor share 1 − S(K)(u,v) decays multiplicatively as Πk=1K (1 − rk), preventing unrecorded generative dilution.
+
+Proof: From the recurrence S(k) = (1 − rk) S(k−1) + rk, subtract both sides from 1:
+
+1 − S(k) = 1 − (1 − rk) S(k−1) − rk = (1 − rk)(1 − S(k−1))
+Unrolling over K passes from an initially unoccluded sensor pixel (S(0) = 0):
+
+S(K) = 1 − Πk=1K (1 − rk)
+Worked example for ra = 0.30: after Pass 1, S(1) = 0.30 (70% physical sensor share); after Pass 2, S(2) = 1 − (0.70)2 = 0.51 (49% physical sensor share); after Pass 3, S(3) = 1 − (0.70)3 = 0.657 (34.3% physical sensor share).     ∎
+
+8.3 100% Tamper Detection & Descendant Localization in Hash-Linked DAG
+Theorem 3: Under collision-resistant hashing (SHA-256), any modification Δ ≠ 0 to an ancestor image, weight w(x,J), or parameter at generation g0 invalidates Ghash(I) for 100% of reachable descendant images at generations g > g0 with false-negative probability ≤ 2−256.
+
+Proof: Let node u ∈ V at generation g0 be altered to u′, changing its digest Hu ≠ Hu′ with probability 1 − 2−256. Any child node v with directed edge (u → v) ∈ E includes Hu in its canonical payload ParentHashes(v). By induction along any directed path p = (u = v0 → v1 → … → vk = I), hash mismatch propagates to every descendant I ∈ Descendants(u), forcing the multiplicative gate Ghash(I) = 0.     ∎
+
+8.4 Hallucination Anomaly Separation via Joint (ΔSSIM, ΔPSNR) Decision Boundary
+Theorem 4: A joint threshold detector triggering when ΔSSIM > τ1 ∧ ΔPSNR < −τ2 strictly reduces false-positive hallucination flags caused by benign noise fluctuations compared to a single-metric PSNR drop detector.
+
+Proof: Random sensor noise or minor sub-pixel registration jitter degrades both structural similarity (ΔSSIM < 0) and signal-to-noise ratio (ΔPSNR < 0) simultaneously. Conversely, generative high-frequency hallucination synthesizes sharp local edges that match structural priors (ΔSSIM > τ1 > 0) while diverging from true radiometric pixel intensities (MSE increases ⟹ ΔPSNR < −τ2 < 0). For independent noise perturbations where P(ΔSSIM > τ1 | noise) = p1 and P(ΔPSNR < −τ2 | noise) = p2, the joint false-positive rate is PFP = p1 · p2 ≪ p2.     ∎
+
+8.5 Spatial Storage Compression via Adaptive Quadtree Tile Summarization (≥ 75% Reduction on Homogeneous Scenes)
+Theorem 5: Partitioning (H × W) per-pixel provenance layers into an adaptive quadtree tile_provenance that subdivides only along cloud-mask and source-index boundaries reduces provenance storage complexity from O(H·W) to O(Pboundary · log2(min(H,W))), where Pboundary is the perimeter length of cloud/source transitions.
+
+Proof: In a uniform grid of N × N pixels, storing full per-pixel weight vectors requires N2 · m entries. In an adaptive quadtree of maximum depth L = log2 N, interior regions where dominant source DI(u,v) and class CI(u,v) are constant collapse into single leaf tiles of size 2k × 2k. When boundary transitions occupy fraction ρ ≤ 0.25 of blocks, total stored records reduce by (1 − ρ) ≥ 75%.     ∎
+
+9.  EXPECTED OUTPUT AND OUTCOME OF THE SYSTEM
+
+• Quantitative Per-Pixel Sensor Traceability: Every pixel in a multi-generation reconstructed satellite image carries an exact fractional contribution vector (SOURCE_WEIGHT) tracing back to original raw satellite frames.
+• Explicit Synthetic Content Quantification: Separates physically observed sensor signal from interpolated or generatively synthesized content via an inherited synthetic share channel SI(u,v) and a compounding Generative Contamination Index (GCI).
+• Three-State Spatial Provenance Visualization: Provides analysts with an interactive 4-view Per-Pixel Provenance Inspector (IMAGE, 3-state CLASS_MAP [OBSERVED, WEAK, SYNTHESIZED], UNCERTAINTY [0,1], and SOURCE_INDEX).
+• Tamper-Evident Multi-Generation Lineage: Detects any post-hoc database modification to historical weights, parent links, metrics, or images across the refinement DAG via SHA-256 parent hash chaining.
+• Automated Hallucination Quarantine: Prevents generative hallucination compounding by flagging passes where SSIM rises while PSNR drops and blocking unverified or anomalous images from downstream refinement jobs.
+10.  What aspect(s) of the invention need(s) protection?
+
+1. The multi-generation per-pixel provenance propagation mechanism configured to compose fractional raw satellite frame contribution weights (SOURCE_WEIGHT) and an inherited synthetic share channel (SI(u,v)) across successive image refinement passes in a directed acyclic graph (DAG).
+2. The co-registered four-layer per-pixel provenance architecture comprising the reconstructed image (IMAGE), the three-state pixel classification map (CLASS_MAP: OBSERVED, WEAK, SYNTHESIZED), the calibrated pixel uncertainty map (UNCERTAINTY), and the dominant source-frame index map (SOURCE_INDEX).
+3. The compounding Generative Contamination Index (GCI) propagation and spatial cross-validation mechanism utilizing calibrated algorithm generative factors ra ∈ [0,1] cross-checked against the spatial fraction of SYNTHESIZED pixels in the CLASS_MAP.
+4. The cycle-guarded, hash-linked DAG provenance record structure binding input image digests, output provenance layer digests, algorithm parameters, and parent record hashes across branching and merging refinement chains.
+5. The dual-mode replay verification mechanism applying bit-exact cryptographic hash matching for deterministic CPU algorithms and bounded perceptual-hash/pixel-error tolerance matching for GPU generative models.
+6. The quality-regression hallucination anomaly detector and automated pipeline gate configured to quarantine reconstructed images when ancestor verification fails or when SSIM increases while PSNR decreases beyond a predefined threshold.
+What is Technology readiness level of your invention?
+
+Research
+Development
+Deployment
+TRL 1
+TRL 2
+TRL 3
+TRL 4
+TRL 5
+TRL 6
+TRL 7
+TRL 8
+TRL 9
+Basic Principles observed
+Technology concept formulated
+Experimental proof of concept
+Technology validated in a lab
+Technology validated in a relevant environment
+Technology demonstrated in a relevant environment
+System prototype demonstration in an operational environment
+System complete and qualified
+Actual system proven in an operational environment
+✓
+✓
+✓
+✓
+ 
+ 
+ 
+ 
+ 
+----------------------END OF THE DOCUMENT-----------------------------
+
+
+does the reconsturction using the parent image is done accoring to the forumla dont add any code yet
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-30T13:39:59+05:30.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.8 Flash (High) to Claude Sonnet 4.6 (Thinking). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>

@@ -76,6 +76,7 @@ export default function App() {
                 <Link to="/jobs/new" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Log Job</Link>
                 <Link to="/jobs" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">My Jobs</Link>
                 <Link to="/lineage" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Lineage</Link>
+                <Link to="/frames" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Frames</Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-950/30 px-3 py-1.5 rounded-full border border-rose-900/50 transition-colors"

@@ -1,0 +1,45 @@
+{
+  "generated_timestamp": "2026-10-31T15:42:07.449298+00:00",
+  "ed25519_public_key": "097f80c7c48782cf4bd822741a57ebfb8fbafa80b888e4676554bd62a9bdc4da",
+  "ground_truth_reference": "https://fjfrwanpsgmyyppegvxy.supabase.co/storage/v1/object/public/satellite-images/ground-truths/sentinel2a_ground_truth.png",
+  "tamper_simulation": {
+    "target_descendant_job_id": 10,
+    "g_hash": 0,
+    "signature_valid": true,
+    "all_ancestors_valid": false,
+    "parent_checks": [
+      {
+        "parent_job_id": 8,
+        "expected_record_hash": "3b1ee6100136c9501ad29125c391098ec9efb9d5049dfd1265a959f0f48194fa",
+        "mutated_hash_injected": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "hash_match": false,
+        "signature_valid": false,
+        "status": "TAMPER_DETECTED"
+      },
+      {
+        "parent_job_id": 9,
+        "expected_record_hash": "0431f6e20e631cd683a74b1ecd37cee5c69c3177295e5d406ee6055957689377",
+        "hash_match": true,
+        "signature_valid": true,
+        "status": "VERIFIED"
+      }
+    ],
+    "pipeline_action": "QUARANTINE_BLOCK",
+    "audit_message": "INSPECTION_GATE_QUARANTINED: G_hash=0, Ancestor Job #8 hash mismatch (tamper detected)"
+  },
+  "quality_regression_gate": {
+    "target_job_id": 11,
+    "parent_job_id": 10,
+    "parent_psnr": 41.993,
+    "parent_ssim": 0.97,
+    "measured_psnr": 39.49,
+    "measured_ssim": 0.992,
+    "delta_ssim": 0.022,
+    "delta_psnr": -2.5,
+    "tau_ssim": 0.02,
+    "tau_psnr": 1.5,
+    "anomaly_detector_A": 1,
+    "pipeline_action": "QUARANTINE_BLOCK",
+    "audit_message": "QUALITY_REGRESSION_ANOMALY: \u0394SSIM (+0.0220) > 0.02 and \u0394PSNR (-2.50 dB) < -1.5 dB. Output quarantined."
+  }
+}
